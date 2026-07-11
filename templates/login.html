@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cantine Urbani — Accesso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bordeaux:   #4A1B2E;
+            --bordeaux-md:#72243E;
+            --rame:       #993C1D;
+            --avorio:     #F5EFE0;
+            --avorio-md:  #EAE0CC;
+            --testo:      #1A0F0F;
+            --testo-soft: #5C4040;
+            --vetro:      rgba(245,239,224,0.06);
+            --r:          8px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bordeaux);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Texture stilizzata vite */
+        body::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                radial-gradient(ellipse 60% 80% at 15% 50%, rgba(114,36,62,0.35) 0%, transparent 70%),
+                radial-gradient(ellipse 40% 60% at 85% 20%, rgba(153,60,29,0.2) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .card {
+            position: relative;
+            background: var(--avorio);
+            border-radius: 4px;
+            padding: 3rem 3.5rem 2.5rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.45);
+        }
+
+        /* linea bordeaux in cima */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--bordeaux-md), var(--rame));
+            border-radius: 4px 4px 0 0;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .logo-area .brand {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--bordeaux);
+            letter-spacing: 0.04em;
+            display: block;
+        }
+
+        .logo-area .subtitle {
+            font-size: 0.7rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-top: 0.25rem;
+        }
+
+        .divider {
+            width: 40px;
+            height: 1px;
+            background: var(--rame);
+            margin: 0.75rem auto 0;
+        }
+
+        label {
+            display: block;
+            font-size: 0.7rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-bottom: 0.4rem;
+            margin-top: 1.25rem;
+        }
+
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--avorio-md);
+            border-radius: var(--r);
+            background: #fff;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            color: var(--testo);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--bordeaux-md);
+            box-shadow: 0 0 0 3px rgba(114,36,62,0.12);
+        }
+
+        .btn-login {
+            display: block;
+            width: 100%;
+            margin-top: 2rem;
+            padding: 0.85rem;
+            background: var(--bordeaux);
+            color: var(--avorio);
+            border: none;
+            border-radius: var(--r);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 500;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn-login:hover  { background: var(--bordeaux-md); }
+        .btn-login:active { transform: scale(0.98); }
+
+        {% if error %}
+        .error-msg {
+            background: #FEF2F2;
+            border-left: 3px solid var(--rame);
+            color: var(--rame);
+            font-size: 0.82rem;
+            padding: 0.6rem 0.9rem;
+            border-radius: 0 var(--r) var(--r) 0;
+            margin-top: 1.25rem;
+        }
+        {% endif %}
+
+        .footer-note {
+            text-align: center;
+            margin-top: 2rem;
+            font-size: 0.72rem;
+            color: var(--testo-soft);
+            letter-spacing: 0.06em;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo-area">
+            <span class="brand">Cantine Urbani</span>
+            <span class="subtitle">Sistema di monitoraggio IoT</span>
+            <div class="divider"></div>
+        </div>
+
+        <form method="POST" action="/login">
+            <label for="username">Utente</label>
+            <input type="text" id="username" name="username" autocomplete="username" required>
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+            {% if error %}
+            <div class="error-msg">Credenziali non valide. Riprova.</div>
+            {% endif %}
+
+            <button type="submit" class="btn-login">Accedi</button>
+        </form>
+
+        <p class="footer-note">Accesso riservato al personale autorizzato</p>
+    </div>
+</body>
+</html>

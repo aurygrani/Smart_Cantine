@@ -1,0 +1,24 @@
+Quando arrivano i modelli dell'alessia .plk
+tu dovrai solo "svegliare" il modello nel tuo codice e fargli fare le previsioni.
+Nel tuo app.py, aggiungerai un paio di righe che assomigliano a questo (te lo scrivo
+in modo semplificato per farti capire la logica):
+
+CODICE
+import pickle # La libreria per aprire i file .pkl
+
+# 1. "Svegli" il consulente caricando il file
+modello_costi = pickle.load(open('modelli_ai/predittore_costi.pkl', 'rb'))
+
+# ... (dentro una delle tue rotte Flask) ...
+
+# 2. Prendi i dati dal tuo database (es. isolamento, temperatura)
+dati_per_ai = [temperatura_media, umidita_media, tariffa_luce]
+
+# 3. Fai fare la magia al modello!
+costo_previsto = modello_costi.predict([dati_per_ai])
+
+print(f"L'AI dice che spenderai: {costo_previsto} Euro quest'anno")
+
+Una volta che il modello ti avrà restituito quel costo_previsto,
+tu lo prenderai e lo "innesterai" nel tuo index.html per farlo apparire
+in bella mostra sulla Dashboard del cliente.

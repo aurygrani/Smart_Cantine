@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hub — Cantine Urbani IoT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bordeaux:   #4A1B2E;
+            --bordeaux-md:#72243E;
+            --rame:       #993C1D;
+            --rame-light: #F5C4B3;
+            --avorio:     #F5EFE0;
+            --avorio-md:  #EAE0CC;
+            --testo:      #1A0F0F;
+            --testo-soft: #7A5C5C;
+            --ok:         #1D9E75;
+            --ok-bg:      #E1F5EE;
+            --warn:       #BA7517;
+            --warn-bg:    #FAEEDA;
+            --danger:     #A32D2D;
+            --danger-bg:  #FCEBEB;
+            --r:          10px;
+            --sidebar-w:  240px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #F0EAD8;
+            color: var(--testo);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: var(--bordeaux);
+            min-height: 100vh;
+            padding: 2rem 0;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0;
+            z-index: 10;
+        }
+
+        .sidebar .brand {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--avorio);
+            letter-spacing: 0.04em;
+            padding: 0 1.5rem;
+            line-height: 1.2;
+        }
+        .sidebar .brand span {
+            display: block;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.62rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: rgba(245,239,224,0.5);
+            margin-top: 0.2rem;
+        }
+
+        .sidebar-divider {
+            height: 1px;
+            background: rgba(245,239,224,0.12);
+            margin: 1.5rem 1.5rem;
+        }
+
+        .sidebar-label {
+            font-size: 0.62rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: rgba(245,239,224,0.4);
+            padding: 0 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.6rem 1.5rem;
+            text-decoration: none;
+            font-size: 0.85rem;
+            color: rgba(245,239,224,0.75);
+            transition: background 0.15s, color 0.15s;
+            border-left: 2px solid transparent;
+        }
+
+        .sidebar nav a:hover,
+        .sidebar nav a.active {
+            background: rgba(245,239,224,0.08);
+            color: var(--avorio);
+            border-left-color: var(--rame);
+        }
+
+        .sidebar nav a .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--ok);
+            flex-shrink: 0;
+        }
+        .sidebar nav a .dot.warn  { background: var(--warn); }
+        .sidebar nav a .dot.danger { background: var(--danger); }
+
+        .sidebar-bottom {
+            margin-top: auto;
+            padding: 0 1.5rem 1rem;
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.6rem 0.8rem;
+            background: rgba(245,239,224,0.06);
+            border-radius: var(--r);
+        }
+
+        .user-pill .avatar {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: var(--bordeaux-md);
+            border: 1.5px solid rgba(245,239,224,0.25);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: var(--avorio);
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+
+        .user-pill .info { flex: 1; min-width: 0; }
+        .user-pill .info .name {
+            font-size: 0.82rem;
+            color: var(--avorio);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .user-pill .info .role {
+            font-size: 0.68rem;
+            color: rgba(245,239,224,0.4);
+        }
+
+        .logout-btn {
+            display: block;
+            margin-top: 0.75rem;
+            text-align: center;
+            font-size: 0.7rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(245,239,224,0.35);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+        .logout-btn:hover { color: rgba(245,239,224,0.7); }
+
+        /* ── MAIN ── */
+        .main {
+            margin-left: var(--sidebar-w);
+            flex: 1;
+            padding: 2.5rem 2.5rem 3rem;
+        }
+
+        .top-bar {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+
+        .top-bar h1 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--bordeaux);
+            line-height: 1;
+        }
+
+        .top-bar .ts {
+            font-size: 0.75rem;
+            color: var(--testo-soft);
+            letter-spacing: 0.06em;
+        }
+
+        /* ── KPI ROW ── */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi {
+            background: #fff;
+            border-radius: var(--r);
+            padding: 1.1rem 1.25rem;
+            border: 1px solid var(--avorio-md);
+        }
+
+        .kpi .kpi-label {
+            font-size: 0.68rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-bottom: 0.5rem;
+        }
+
+        .kpi .kpi-val {
+            font-size: 1.9rem;
+            font-weight: 300;
+            color: var(--bordeaux);
+            line-height: 1;
+        }
+
+        .kpi .kpi-sub {
+            font-size: 0.7rem;
+            color: var(--testo-soft);
+            margin-top: 0.3rem;
+        }
+
+        /* ── SECTION TITLE ── */
+        .section-title {
+            font-size: 0.68rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--avorio-md);
+        }
+
+        /* ── SEDE CARDS ── */
+        .sedi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .sede-card {
+            background: #fff;
+            border-radius: var(--r);
+            border: 1px solid var(--avorio-md);
+            overflow: hidden;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+        }
+
+        .sede-card:hover {
+            border-color: var(--bordeaux-md);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(74,27,46,0.1);
+        }
+
+        .sede-card-header {
+            background: var(--bordeaux);
+            padding: 0.9rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sede-card-header .sede-nome {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--avorio);
+            text-transform: capitalize;
+        }
+
+        .sede-card-header .produttore-badge {
+            font-size: 0.62rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            background: rgba(245,239,224,0.12);
+            color: rgba(245,239,224,0.7);
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+        }
+
+        .sede-card-body {
+            padding: 1rem 1.25rem;
+        }
+
+        .metric-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .metric {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .metric .m-label {
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+        }
+
+        .metric .m-val {
+            font-size: 1.3rem;
+            font-weight: 300;
+            color: var(--testo);
+            line-height: 1;
+        }
+
+        .metric .m-val.danger { color: var(--danger); }
+        .metric .m-val.warn   { color: var(--warn); }
+
+        .metric .m-unit {
+            font-size: 0.7rem;
+            color: var(--testo-soft);
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--avorio-md);
+            margin-top: 0.25rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.68rem;
+            font-weight: 500;
+            padding: 0.25rem 0.65rem;
+            border-radius: 99px;
+        }
+
+        .badge.ok     { background: var(--ok-bg);     color: var(--ok); }
+        .badge.warn   { background: var(--warn-bg);   color: var(--warn); }
+        .badge.danger { background: var(--danger-bg); color: var(--danger); }
+
+        .badge::before {
+            content: '';
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            display: inline-block;
+        }
+
+        .ts-small {
+            font-size: 0.68rem;
+            color: var(--testo-soft);
+        }
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--testo-soft);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+    <div class="brand">
+        Cantine Urbani
+        <span>Monitoraggio IoT</span>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <p class="sidebar-label">Sedi</p>
+    <nav>
+        {% set sedi_nav = [('pievepelago','Pievepelago'),('vignola','Vignola'),('carpi','Carpi')] %}
+        {% for slug, label in sedi_nav %}
+        <a href="/sede/{{ slug }}">
+            <span class="dot"></span>
+            {{ label }}
+        </a>
+        {% endfor %}
+    </nav>
+
+    <div class="sidebar-divider"></div>
+    <p class="sidebar-label">Sistema</p>
+    <nav>
+        <a href="/" class="active">📊 Dashboard</a>
+    </nav>
+
+    <div class="sidebar-bottom">
+        <div class="user-pill">
+            <div class="avatar">{{ nome[:2] }}</div>
+            <div class="info">
+                <div class="name">{{ nome }}</div>
+                <div class="role">{% if ruolo == 'admin' %}Amministratore{% else %}{{ ruolo | capitalize }}{% endif %}</div>
+            </div>
+        </div>
+        <a href="/logout" class="logout-btn">Esci</a>
+    </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<main class="main">
+    <div class="top-bar">
+        <h1>{% if ruolo == "admin" %}Panoramica cantine{% else %}Cantine {{ ruolo | capitalize }}{% endif %}</h1>
+        <span class="ts" id="ora-corrente"></span>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-row">
+        <div class="kpi">
+            <div class="kpi-label">Sedi monitorate</div>
+            <div class="kpi-val">{{ dati_sedi | length }}</div>
+            <div class="kpi-sub">{% if ruolo == "admin" %}su 9 combinazioni attive{% else %}sedi {{ ruolo }}{% endif %}</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Allarmi CO₂ attivi</div>
+            <div class="kpi-val" style="color:{% if allarmi_co2 > 0 %}var(--danger){% else %}var(--ok){% endif %}">{{ allarmi_co2 }}</div>
+            <div class="kpi-sub">soglia &gt; 1000 ppm</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Temp. media interna</div>
+            <div class="kpi-val">{{ "%.1f"|format(temp_media) }}°</div>
+            <div class="kpi-sub">valore medio tutte le sedi</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Ultimo aggiornamento</div>
+            <div class="kpi-val" style="font-size:1.2rem" id="ultimo-agg">—</div>
+            <div class="kpi-sub">dati in tempo reale</div>
+        </div>
+    </div>
+
+    <!-- GRID SEDI -->
+    <p class="section-title">Stato sedi in tempo reale</p>
+
+    {% if dati_sedi %}
+    <div class="sedi-grid">
+        {% for item in dati_sedi %}
+        <a class="sede-card" href="/sede/{{ item.sede }}">
+            <div class="sede-card-header">
+                <span class="sede-nome">{{ item.sede | capitalize }}</span>
+                <span class="produttore-badge">{{ item.produttore }}</span>
+            </div>
+            <div class="sede-card-body">
+                <div class="metric-row">
+                    <div class="metric">
+                        <span class="m-label">Temp. interna</span>
+                        <span class="m-val {% if item.temp_int and item.temp_int > 24 %}danger{% elif item.temp_int and item.temp_int > 20 %}warn{% endif %}">
+                            {{ "%.1f"|format(item.temp_int) if item.temp_int is not none else '—' }}<span class="m-unit"> °C</span>
+                        </span>
+                    </div>
+                    <div class="metric">
+                        <span class="m-label">Temp. esterna</span>
+                        <span class="m-val">{{ "%.1f"|format(item.temp_est) if item.temp_est is not none else '—' }}<span class="m-unit"> °C</span></span>
+                    </div>
+                    <div class="metric">
+                        <span class="m-label">Umidità int.</span>
+                        <span class="m-val">{{ "%.0f"|format(item.umid_int) if item.umid_int is not none else '—' }}<span class="m-unit"> %</span></span>
+                    </div>
+                    <div class="metric">
+                        <span class="m-label">CO₂</span>
+                        <span class="m-val {% if item.co2 and item.co2 > 1000 %}danger{% elif item.co2 and item.co2 > 800 %}warn{% endif %}">
+                            {{ "%.0f"|format(item.co2) if item.co2 is not none else '—' }}<span class="m-unit"> ppm</span>
+                        </span>
+                    </div>
+                </div>
+
+                {% if item.temp_vino_proiettata is not none %}
+                <div class="metric" style="margin-bottom: 0.75rem">
+                    <span class="m-label">🍷 Vino proiettato</span>
+                    <span class="m-val {% if item.temp_vino_proiettata > 24 %}danger{% endif %}">
+                        {{ "%.1f"|format(item.temp_vino_proiettata) }}<span class="m-unit"> °C</span>
+                    </span>
+                </div>
+                {% endif %}
+
+                <div class="status-bar">
+                    {% if item.allarme_co2 %}
+                        <span class="badge danger">Allarme CO₂</span>
+                    {% elif item.temp_vino_proiettata and item.temp_vino_proiettata > 24 %}
+                        <span class="badge warn">Vino surriscaldato</span>
+                    {% else %}
+                        <span class="badge ok">Parametri nella norma</span>
+                    {% endif %}
+
+                    {% if item.timestamp %}
+                    <span class="ts-small">{{ item.timestamp.strftime('%H:%M') }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+        <p style="font-size:2rem; margin-bottom: 0.5rem;">📡</p>
+        <p>In attesa di dati dai sensori…</p>
+        <p style="font-size:0.78rem; margin-top:0.4rem;">Verifica che il simulatore e il broker MQTT siano attivi.</p>
+    </div>
+    {% endif %}
+</main>
+
+<script>
+    function aggiorna() {
+        const ora = new Date();
+        document.getElementById('ora-corrente').textContent =
+            ora.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long' }) +
+            ' — ' + ora.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
+        document.getElementById('ultimo-agg').textContent =
+            ora.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    }
+    aggiorna();
+    setInterval(aggiorna, 1000);
+
+    // Auto-refresh ogni 30s per aggiornare i dati
+    setTimeout(() => location.reload(), 30000);
+</script>
+</body>
+</html>
