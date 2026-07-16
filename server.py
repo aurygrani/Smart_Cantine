@@ -142,6 +142,11 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     topic = msg.topic
+
+    # Ignora i topic di comando (non sono JSON, li abbiamo pubblicati noi stessi)
+    if topic.endswith('/comandi'):
+        return
+
     try:
         payload = json.loads(msg.payload.decode('utf-8'))
         parti = topic.split('/')
@@ -379,12 +384,16 @@ def api_latest(nome_sede):
             .group_by(DatoSensore.produttore).subquery())
     ultimi = DatoSensore.query.filter(DatoSensore.id.in_(subq)).all()
     return jsonify([{
-        'produttore': d.produttore, 'sede': d.sede,
-        'timestamp': d.timestamp.isoformat(),
-        'temp_int': d.temp_int, 'temp_est': d.temp_est,
-        'umid_int': d.umid_int, 'umid_est': d.umid_est,
-        'co2': d.co2, 'allarme_co2': d.allarme_co2,
-        'temp_vino_proiettata': d.temp_vino_proiettata,
+        'produttore':            d.produttore,
+        'sede':                  d.sede,
+        'timestamp':             d.timestamp.isoformat() if d.timestamp else None,
+        'temp_int':              float(d.temp_int)  if d.temp_int  is not None else None,
+        'temp_est':              float(d.temp_est)  if d.temp_est  is not None else None,
+        'umid_int':              float(d.umid_int)  if d.umid_int  is not None else None,
+        'umid_est':              float(d.umid_est)  if d.umid_est  is not None else None,
+        'co2':                   float(d.co2)       if d.co2       is not None else None,
+        'allarme_co2':           bool(d.allarme_co2),
+        'temp_vino_proiettata':  float(d.temp_vino_proiettata) if d.temp_vino_proiettata is not None else None,
     } for d in ultimi])
 
 
