@@ -147,6 +147,11 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     topic = msg.topic
+
+    # Ignora i topic di comando: non sono JSON, li pubblichiamo noi stessi
+    if topic.endswith('/comandi'):
+        return
+
     try:
         payload = json.loads(msg.payload.decode('utf-8'))
         parti = topic.split('/')
