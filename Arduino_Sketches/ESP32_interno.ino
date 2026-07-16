@@ -5,13 +5,13 @@
 // =======================
 // WIFI
 // =======================
-const char* ssid = "wi10973";
-const char* password = "k8z422vc";
+const char* ssid = "wi_fi";
+const char* password = "password";
 
 // =======================
 // MQTT
 // =======================
-const char* mqtt_server = "192.168.15.57";
+const char* mqtt_server = "192.168.00.00";
 const int mqtt_port = 1883;
 
 WiFiClient espClient;
