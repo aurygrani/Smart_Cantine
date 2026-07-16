@@ -383,6 +383,24 @@
             color: var(--testo-soft);
             font-size: 0.9rem;
         }
+
+        /* Flash animation quando un valore cambia in tempo reale */
+        @keyframes flash-update {
+            0%   { opacity: 0.3; transform: scale(0.97); }
+            50%  { opacity: 1;   transform: scale(1.03); }
+            100% { opacity: 1;   transform: scale(1); }
+        }
+        .lm-val.aggiornato {
+            animation: flash-update 0.4s ease-out;
+        }
+
+        /* Indicatore ultimo aggiornamento */
+        .live-ts {
+            font-size: 0.62rem;
+            color: rgba(245,239,224,0.35);
+            letter-spacing: 0.1em;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -448,43 +466,48 @@
     </div>
     {% endif %}
 
-    <!-- Live panel -->
+    <!-- Live panel — i valori vengono aggiornati in tempo reale via JS -->
     <div class="live-panel">
         <div class="live-badge">Live</div>
         <div class="live-metrics">
             <div class="lm">
                 <span class="lm-label">Temp. interna</span>
-                <span class="lm-val {% if ultimo.temp_int > 24 %}danger{% elif ultimo.temp_int > 20 %}warn{% endif %}">
-                    {{ "%.1f"|format(ultimo.temp_int) }}<span class="lm-unit"> °C</span>
+                <span id="val-temp-int" class="lm-val {% if ultimo.temp_int is not none and ultimo.temp_int > 24 %}danger{% elif ultimo.temp_int is not none and ultimo.temp_int > 20 %}warn{% endif %}">
+                    {{ "%.1f"|format(ultimo.temp_int) if ultimo.temp_int is not none else '—' }}<span class="lm-unit"> °C</span>
                 </span>
             </div>
             <div class="lm">
                 <span class="lm-label">Temp. esterna</span>
-                <span class="lm-val">{{ "%.1f"|format(ultimo.temp_est) }}<span class="lm-unit"> °C</span></span>
+                <span id="val-temp-est" class="lm-val">
+                    {{ "%.1f"|format(ultimo.temp_est) if ultimo.temp_est is not none else '—' }}<span class="lm-unit"> °C</span>
+                </span>
             </div>
             <div class="lm">
                 <span class="lm-label">Umidità interna</span>
-                <span class="lm-val">{{ "%.0f"|format(ultimo.umid_int) }}<span class="lm-unit"> %</span></span>
+                <span id="val-umid-int" class="lm-val">
+                    {{ "%.0f"|format(ultimo.umid_int) if ultimo.umid_int is not none else '—' }}<span class="lm-unit"> %</span>
+                </span>
             </div>
             <div class="lm">
                 <span class="lm-label">Umidità esterna</span>
-                <span class="lm-val">{{ "%.0f"|format(ultimo.umid_est) }}<span class="lm-unit"> %</span></span>
+                <span id="val-umid-est" class="lm-val">
+                    {{ "%.0f"|format(ultimo.umid_est) if ultimo.umid_est is not none else '—' }}<span class="lm-unit"> %</span>
+                </span>
             </div>
             <div class="lm">
                 <span class="lm-label">CO₂</span>
-                <span class="lm-val {% if ultimo.co2 > 1000 %}danger{% elif ultimo.co2 > 800 %}warn{% endif %}">
-                    {{ "%.0f"|format(ultimo.co2) }}<span class="lm-unit"> ppm</span>
+                <span id="val-co2" class="lm-val {% if ultimo.co2 is not none and ultimo.co2 > 1000 %}danger{% elif ultimo.co2 is not none and ultimo.co2 > 800 %}warn{% endif %}">
+                    {{ "%.0f"|format(ultimo.co2) if ultimo.co2 is not none else '—' }}<span class="lm-unit"> ppm</span>
                 </span>
             </div>
-            {% if ultimo.temp_vino_proiettata %}
             <div class="lm">
                 <span class="lm-label">🍷 Vino proiettato</span>
-                <span class="lm-val {% if ultimo.temp_vino_proiettata > 24 %}danger{% else %}good{% endif %}">
-                    {{ "%.1f"|format(ultimo.temp_vino_proiettata) }}<span class="lm-unit"> °C</span>
+                <span id="val-vino" class="lm-val {% if ultimo.temp_vino_proiettata is not none and ultimo.temp_vino_proiettata > 24 %}danger{% elif ultimo.temp_vino_proiettata is not none %}good{% endif %}">
+                    {{ "%.1f"|format(ultimo.temp_vino_proiettata) if ultimo.temp_vino_proiettata is not none else '—' }}<span class="lm-unit"> °C</span>
                 </span>
             </div>
-            {% endif %}
         </div>
+        <div class="live-ts">Ultimo aggiornamento: <span id="live-ts">—</span></div>
     </div>
 
     <!-- Grafici -->
@@ -551,13 +574,13 @@
 
 <script>
 {% if dati %}
-// Prepara i dati per i grafici (invertiti: dal più vecchio al più recente)
+// ── GRAFICI STORICI (renderizzati una volta sola al caricamento) ──────────────
 const storici = {{ dati | reverse | list | tojson }};
 const labels  = storici.map(d => d.timestamp.split('T')[1]?.slice(0,5) || d.timestamp.slice(11,16));
-const tInt    = storici.map(d => d.temp_int   ? parseFloat(d.temp_int.toFixed(1))   : null);
-const tEst    = storici.map(d => d.temp_est   ? parseFloat(d.temp_est.toFixed(1))   : null);
-const tVino   = storici.map(d => d.temp_vino_proiettata ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null);
-const co2data = storici.map(d => d.co2        ? parseFloat(d.co2.toFixed(0))         : null);
+const tInt    = storici.map(d => d.temp_int   != null ? parseFloat(d.temp_int.toFixed(1))   : null);
+const tEst    = storici.map(d => d.temp_est   != null ? parseFloat(d.temp_est.toFixed(1))   : null);
+const tVino   = storici.map(d => d.temp_vino_proiettata != null ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null);
+const co2data = storici.map(d => d.co2        != null ? parseFloat(d.co2.toFixed(0))         : null);
 
 const chartDefaults = {
     responsive: true,
@@ -569,15 +592,14 @@ const chartDefaults = {
     }
 };
 
-// Chart temperatura
-new Chart(document.getElementById('chartTemp'), {
+const chartTemp = new Chart(document.getElementById('chartTemp'), {
     type: 'line',
     data: {
         labels,
         datasets: [
-            { label: 'Interna', data: tInt, borderColor: '#72243E', backgroundColor: 'rgba(114,36,62,0.08)',
+            { label: 'Interna',    data: tInt,  borderColor: '#72243E', backgroundColor: 'rgba(114,36,62,0.08)',
               borderWidth: 2, pointRadius: 3, tension: 0.35 },
-            { label: 'Esterna', data: tEst, borderColor: '#993C1D', backgroundColor: 'rgba(153,60,29,0.06)',
+            { label: 'Esterna',    data: tEst,  borderColor: '#993C1D', backgroundColor: 'rgba(153,60,29,0.06)',
               borderWidth: 1.5, pointRadius: 2, borderDash: [4,3], tension: 0.35 },
             { label: 'Vino proj.', data: tVino, borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.06)',
               borderWidth: 1.5, pointRadius: 2, borderDash: [2,2], tension: 0.35 }
@@ -585,16 +607,12 @@ new Chart(document.getElementById('chartTemp'), {
     },
     options: {
         ...chartDefaults,
-        scales: {
-            ...chartDefaults.scales,
-            y: { ...chartDefaults.scales.y,
-                title: { display: true, text: '°C', font: { size: 10 }, color: '#7A5C5C' } }
-        }
+        scales: { ...chartDefaults.scales,
+            y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: '#7A5C5C' } } }
     }
 });
 
-// Chart CO2
-new Chart(document.getElementById('chartCO2'), {
+const chartCO2 = new Chart(document.getElementById('chartCO2'), {
     type: 'bar',
     data: {
         labels,
@@ -603,33 +621,125 @@ new Chart(document.getElementById('chartCO2'), {
             data: co2data,
             backgroundColor: co2data.map(v => v > 1000 ? 'rgba(163,45,45,0.7)' : v > 800 ? 'rgba(186,117,23,0.5)' : 'rgba(74,27,46,0.3)'),
             borderColor:     co2data.map(v => v > 1000 ? '#A32D2D' : v > 800 ? '#BA7517' : '#4A1B2E'),
-            borderWidth: 1,
-            borderRadius: 3
+            borderWidth: 1, borderRadius: 3
         }]
     },
     options: {
         ...chartDefaults,
-        plugins: {
-            ...chartDefaults.plugins,
-            annotation: {
-                annotations: { soglia: {
-                    type: 'line', yMin: 1000, yMax: 1000,
-                    borderColor: 'rgba(163,45,45,0.5)', borderWidth: 1.5, borderDash: [5,4],
-                    label: { display: true, content: 'Soglia 1000', font: { size: 10 }, color: '#A32D2D' }
-                }}
-            }
-        },
-        scales: {
-            ...chartDefaults.scales,
-            y: { ...chartDefaults.scales.y,
-                title: { display: true, text: 'ppm', font: { size: 10 }, color: '#7A5C5C' } }
-        }
+        scales: { ...chartDefaults.scales,
+            y: { ...chartDefaults.scales.y, title: { display: true, text: 'ppm', font: { size: 10 }, color: '#7A5C5C' } } }
     }
 });
 {% endif %}
 
-// Auto-refresh
-setTimeout(() => location.reload(), 30000);
+// ── AGGIORNAMENTO LIVE DEL PANNELLO (senza ricaricare la pagina) ─────────────
+
+const SEDE = "{{ sede }}";
+
+// Mappa: id elemento → { campo nel JSON, decimali, soglie colore }
+const CAMPI = [
+    { id: 'val-temp-int', campo: 'temp_int',             dec: 1, unit: ' °C',
+      classi: v => v > 24 ? 'danger' : v > 20 ? 'warn' : '' },
+    { id: 'val-temp-est', campo: 'temp_est',             dec: 1, unit: ' °C',
+      classi: () => '' },
+    { id: 'val-umid-int', campo: 'umid_int',             dec: 0, unit: ' %',
+      classi: () => '' },
+    { id: 'val-umid-est', campo: 'umid_est',             dec: 0, unit: ' %',
+      classi: () => '' },
+    { id: 'val-co2',      campo: 'co2',                  dec: 0, unit: ' ppm',
+      classi: v => v > 1000 ? 'danger' : v > 800 ? 'warn' : '' },
+    { id: 'val-vino',     campo: 'temp_vino_proiettata', dec: 1, unit: ' °C',
+      classi: v => v > 24 ? 'danger' : 'good' },
+];
+
+function aggiornaValore(cfg, nuovoValore) {
+    const el = document.getElementById(cfg.id);
+    if (!el) return;
+
+    const testoNuovo = nuovoValore != null
+        ? nuovoValore.toFixed(cfg.dec) + cfg.unit
+        : '—';
+
+    // Aggiorna solo se il valore è cambiato
+    const testoAttuale = el.textContent.trim();
+    if (testoAttuale === testoNuovo) return;
+
+    // Aggiorna classi colore
+    el.className = 'lm-val';
+    if (nuovoValore != null) {
+        const classe = cfg.classi(nuovoValore);
+        if (classe) el.classList.add(classe);
+    }
+
+    // Scrivi il nuovo valore con animazione flash
+    el.innerHTML = (nuovoValore != null ? nuovoValore.toFixed(cfg.dec) : '—') +
+                   `<span class="lm-unit">${cfg.unit}</span>`;
+    el.classList.add('aggiornato');
+    setTimeout(() => el.classList.remove('aggiornato'), 500);
+}
+
+async function pollLive() {
+    try {
+        const res  = await fetch(`/api/sede/${SEDE}/latest`);
+        if (!res.ok) return;
+        const lista = await res.json();
+        if (!lista.length) return;
+
+        // Prende il dato del produttore più recente (primo della lista)
+        const d = lista[0];
+
+        CAMPI.forEach(cfg => aggiornaValore(cfg, d[cfg.campo]));
+
+        // Aggiorna timestamp
+        if (d.timestamp) {
+            const ts = new Date(d.timestamp + 'Z');
+            document.getElementById('live-ts').textContent =
+                ts.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        // Aggiorna grafico temperatura aggiungendo il punto più recente
+        {% if dati %}
+        if (typeof chartTemp !== 'undefined') {
+            const ora = d.timestamp ? d.timestamp.slice(11,16) : '';
+            const ultLabel = chartTemp.data.labels.at(-1);
+            if (ora && ora !== ultLabel) {
+                chartTemp.data.labels.push(ora);
+                chartTemp.data.datasets[0].data.push(d.temp_int);
+                chartTemp.data.datasets[1].data.push(d.temp_est);
+                chartTemp.data.datasets[2].data.push(d.temp_vino_proiettata);
+                // Mantieni max 20 punti
+                if (chartTemp.data.labels.length > 20) {
+                    chartTemp.data.labels.shift();
+                    chartTemp.data.datasets.forEach(ds => ds.data.shift());
+                }
+                chartTemp.update('none');
+
+                // Stesso per CO2
+                chartCO2.data.labels.push(ora);
+                const v = d.co2;
+                chartCO2.data.datasets[0].data.push(v);
+                chartCO2.data.datasets[0].backgroundColor.push(
+                    v > 1000 ? 'rgba(163,45,45,0.7)' : v > 800 ? 'rgba(186,117,23,0.5)' : 'rgba(74,27,46,0.3)');
+                chartCO2.data.datasets[0].borderColor.push(
+                    v > 1000 ? '#A32D2D' : v > 800 ? '#BA7517' : '#4A1B2E');
+                if (chartCO2.data.labels.length > 20) {
+                    chartCO2.data.labels.shift();
+                    chartCO2.data.datasets[0].data.shift();
+                    chartCO2.data.datasets[0].backgroundColor.shift();
+                    chartCO2.data.datasets[0].borderColor.shift();
+                }
+                chartCO2.update('none');
+            }
+        }
+        {% endif %}
+
+    } catch(e) { /* silenzioso — la rete può avere momenti morti */ }
+}
+
+// Polling ogni 5 secondi — in sincronia con l'intervallo dei sensori (10s)
+// ma abbastanza frequente da sembrare in tempo reale
+setInterval(pollLive, 5000);
+setTimeout(pollLive, 1000); // primo aggiornamento subito dopo il caricamento
 </script>
 </body>
 </html>

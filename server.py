@@ -28,10 +28,15 @@ allarmi_recenti = deque(maxlen=50)
 buffer_fusione = {
     "temp_int": None,
     "umid_int": None,
-    "co2": None,
+    "co2":      None,
     "temp_est": None,
     "umid_est": None,
 }
+
+# Tiene traccia dell ultimo payload salvato per urbani/pievepelago.
+# Evita righe duplicate quando il simulatore ripubblica sullo stesso
+# topic /sensori per il consenso geografico GEO.
+_ultimo_payload_salvato: dict = {}
 
 # Soglie per i comandi agli attuatori ESP32
 SOGLIA_TEMP_ALTA = 26.0  # °C → accende LED_TEMPERATURA (raffrescamento)
@@ -142,11 +147,6 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     topic = msg.topic
-
-    # Ignora i topic di comando (non sono JSON, li abbiamo pubblicati noi stessi)
-    if topic.endswith('/comandi'):
-        return
-
     try:
         payload = json.loads(msg.payload.decode('utf-8'))
         parti = topic.split('/')
@@ -184,6 +184,14 @@ def on_message(client, userdata, msg):
 
                 # Abbiamo tutto: usa il buffer come payload completo
                 payload = dict(buffer_fusione)
+
+                # Anti-duplicato: se il payload è identico all ultimo salvato, scartiamo.
+                # Succede quando il simulatore ripubblica su /sensori per il consenso GEO.
+                global _ultimo_payload_salvato
+                if payload == _ultimo_payload_salvato:
+                    return
+                _ultimo_payload_salvato = dict(payload)
+
                 print(f"✅ Fusione completa ESP32+ESP8266 per {produttore}/{sede}: {payload}")
 
             # ── Da qui in poi identico per tutti i twin ───────────────────────
@@ -384,16 +392,12 @@ def api_latest(nome_sede):
             .group_by(DatoSensore.produttore).subquery())
     ultimi = DatoSensore.query.filter(DatoSensore.id.in_(subq)).all()
     return jsonify([{
-        'produttore':            d.produttore,
-        'sede':                  d.sede,
-        'timestamp':             d.timestamp.isoformat() if d.timestamp else None,
-        'temp_int':              float(d.temp_int)  if d.temp_int  is not None else None,
-        'temp_est':              float(d.temp_est)  if d.temp_est  is not None else None,
-        'umid_int':              float(d.umid_int)  if d.umid_int  is not None else None,
-        'umid_est':              float(d.umid_est)  if d.umid_est  is not None else None,
-        'co2':                   float(d.co2)       if d.co2       is not None else None,
-        'allarme_co2':           bool(d.allarme_co2),
-        'temp_vino_proiettata':  float(d.temp_vino_proiettata) if d.temp_vino_proiettata is not None else None,
+        'produttore': d.produttore, 'sede': d.sede,
+        'timestamp': d.timestamp.isoformat(),
+        'temp_int': d.temp_int, 'temp_est': d.temp_est,
+        'umid_int': d.umid_int, 'umid_est': d.umid_est,
+        'co2': d.co2, 'allarme_co2': d.allarme_co2,
+        'temp_vino_proiettata': d.temp_vino_proiettata,
     } for d in ultimi])
 
 
