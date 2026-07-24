@@ -123,7 +123,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // Accetta soltanto valori 0 oppure 1.
+  // Controllo che i valori che arrivano siano solo 0 oppure 1.
   if ((statoTemperatura != 0 && statoTemperatura != 1) ||
       (statoUmidita != 0 && statoUmidita != 1) ||
       (statoCO2 != 0 && statoCO2 != 1) ||
@@ -132,7 +132,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // L'ESP32 non esegue piu i calcoli: applica la decisione del server.
+  // L'ESP32 applica la decisione del server.
+  //Il codice utilizza l'operatore ternario (condizione ? VERO : FALSO): 
+  //ad esempio, statoTemperatura ? HIGH : LOW significa "se statoTemperatura 
+  //è 1 (vero), manda HIGH al pin, altrimenti manda LOW".
   digitalWrite(LED_TEMPERATURA, statoTemperatura ? HIGH : LOW);
   digitalWrite(LED_UMIDITA, statoUmidita ? HIGH : LOW);
   digitalWrite(LED_CO2, statoCO2 ? HIGH : LOW);
