@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hub — Cantine Urbani IoT</title>
+    <title>Hub — Cantine IoT</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -13,7 +14,6 @@
             --bordeaux:   #4A1B2E;
             --bordeaux-md:#72243E;
             --rame:       #993C1D;
-            --rame-light: #F5C4B3;
             --avorio:     #F5EFE0;
             --avorio-md:  #EAE0CC;
             --testo:      #1A0F0F;
@@ -28,379 +28,257 @@
             --sidebar-w:  240px;
         }
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #F0EAD8;
-            color: var(--testo);
-            min-height: 100vh;
-            display: flex;
-        }
+        body { font-family:'Inter',sans-serif; background:#F0EAD8; color:var(--testo); min-height:100vh; display:flex; }
 
         /* ── SIDEBAR ── */
-        .sidebar {
-            width: var(--sidebar-w);
-            background: var(--bordeaux);
-            min-height: 100vh;
-            padding: 2rem 0;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0; left: 0;
-            z-index: 10;
-        }
-
-        .sidebar .brand {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: var(--avorio);
-            letter-spacing: 0.04em;
-            padding: 0 1.5rem;
-            line-height: 1.2;
-        }
-        .sidebar .brand span {
-            display: block;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.62rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: rgba(245,239,224,0.5);
-            margin-top: 0.2rem;
-        }
-
-        .sidebar-divider {
-            height: 1px;
-            background: rgba(245,239,224,0.12);
-            margin: 1.5rem 1.5rem;
-        }
-
-        .sidebar-label {
-            font-size: 0.62rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: rgba(245,239,224,0.4);
-            padding: 0 1.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .sidebar nav a {
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            padding: 0.6rem 1.5rem;
-            text-decoration: none;
-            font-size: 0.85rem;
-            color: rgba(245,239,224,0.75);
-            transition: background 0.15s, color 0.15s;
-            border-left: 2px solid transparent;
-        }
-
-        .sidebar nav a:hover,
-        .sidebar nav a.active {
-            background: rgba(245,239,224,0.08);
-            color: var(--avorio);
-            border-left-color: var(--rame);
-        }
-
-        .sidebar nav a .dot {
-            width: 7px; height: 7px;
-            border-radius: 50%;
-            background: var(--ok);
-            flex-shrink: 0;
-        }
-        .sidebar nav a .dot.warn  { background: var(--warn); }
-        .sidebar nav a .dot.danger { background: var(--danger); }
-
-        .sidebar-bottom {
-            margin-top: auto;
-            padding: 0 1.5rem 1rem;
-        }
-
-        .user-pill {
-            display: flex;
-            align-items: center;
-            gap: 0.7rem;
-            padding: 0.6rem 0.8rem;
-            background: rgba(245,239,224,0.06);
-            border-radius: var(--r);
-        }
-
-        .user-pill .avatar {
-            width: 30px; height: 30px;
-            border-radius: 50%;
-            background: var(--bordeaux-md);
-            border: 1.5px solid rgba(245,239,224,0.25);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.72rem;
-            font-weight: 500;
-            color: var(--avorio);
-            text-transform: uppercase;
-            flex-shrink: 0;
-        }
-
-        .user-pill .info { flex: 1; min-width: 0; }
-        .user-pill .info .name {
-            font-size: 0.82rem;
-            color: var(--avorio);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .user-pill .info .role {
-            font-size: 0.68rem;
-            color: rgba(245,239,224,0.4);
-        }
-
-        .logout-btn {
-            display: block;
-            margin-top: 0.75rem;
-            text-align: center;
-            font-size: 0.7rem;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: rgba(245,239,224,0.35);
-            text-decoration: none;
-            transition: color 0.15s;
-        }
-        .logout-btn:hover { color: rgba(245,239,224,0.7); }
+        .sidebar { width:var(--sidebar-w); background:var(--bordeaux); min-height:100vh; padding:2rem 0; display:flex; flex-direction:column; position:fixed; top:0; left:0; z-index:10; }
+        .sidebar .brand { font-family:'Cormorant Garamond',serif; font-size:1.5rem; font-weight:600; color:var(--avorio); letter-spacing:0.04em; padding:0 1.5rem; line-height:1.2; }
+        .sidebar .brand span { display:block; font-family:'Inter',sans-serif; font-size:0.62rem; letter-spacing:0.2em; text-transform:uppercase; color:rgba(245,239,224,0.5); margin-top:0.2rem; }
+        .sidebar-divider { height:1px; background:rgba(245,239,224,0.12); margin:1.5rem 1.5rem; }
+        .sidebar-label { font-size:0.62rem; letter-spacing:0.2em; text-transform:uppercase; color:rgba(245,239,224,0.4); padding:0 1.5rem; margin-bottom:0.5rem; }
+        .sidebar nav a { display:flex; align-items:center; gap:0.6rem; padding:0.6rem 1.5rem; text-decoration:none; font-size:0.85rem; color:rgba(245,239,224,0.75); transition:background .15s,color .15s; border-left:2px solid transparent; }
+        .sidebar nav a:hover, .sidebar nav a.active { background:rgba(245,239,224,0.08); color:var(--avorio); border-left-color:var(--rame); }
+        .sidebar nav a .dot { width:7px; height:7px; border-radius:50%; background:var(--ok); flex-shrink:0; }
+        .sidebar-bottom { margin-top:auto; padding:0 1.5rem 1rem; }
+        .user-pill { display:flex; align-items:center; gap:0.7rem; padding:0.6rem 0.8rem; background:rgba(245,239,224,0.06); border-radius:var(--r); }
+        .user-pill .avatar { width:30px; height:30px; border-radius:50%; background:var(--bordeaux-md); border:1.5px solid rgba(245,239,224,0.25); display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:500; color:var(--avorio); text-transform:uppercase; flex-shrink:0; }
+        .user-pill .info .name { font-size:0.82rem; color:var(--avorio); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .user-pill .info .role { font-size:0.68rem; color:rgba(245,239,224,0.4); }
+        .logout-btn { display:block; margin-top:0.75rem; text-align:center; font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:rgba(245,239,224,0.35); text-decoration:none; transition:color .15s; }
+        .logout-btn:hover { color:rgba(245,239,224,0.7); }
 
         /* ── MAIN ── */
-        .main {
-            margin-left: var(--sidebar-w);
-            flex: 1;
-            padding: 2.5rem 2.5rem 3rem;
-        }
+        .main { margin-left:var(--sidebar-w); flex:1; padding:2.5rem 2.5rem 3rem; }
+        .top-bar { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:1.5rem; }
+        .top-bar h1 { font-family:'Cormorant Garamond',serif; font-size:2rem; font-weight:600; color:var(--bordeaux); line-height:1; }
+        .top-bar .ts { font-size:0.75rem; color:var(--testo-soft); letter-spacing:0.06em; }
 
-        .top-bar {
-            display: flex;
-            align-items: flex-end;
-            justify-content: space-between;
-            margin-bottom: 2rem;
-        }
+        /* ── KPI ── */
+        .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .kpi { background:#fff; border-radius:var(--r); padding:1rem 1.25rem; border:1px solid var(--avorio-md); }
+        .kpi .kpi-label { font-size:0.68rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--testo-soft); margin-bottom:0.4rem; }
+        .kpi .kpi-val { font-size:1.8rem; font-weight:300; color:var(--bordeaux); line-height:1; }
+        .kpi .kpi-sub { font-size:0.68rem; color:var(--testo-soft); margin-top:0.25rem; }
 
-        .top-bar h1 {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--bordeaux);
-            line-height: 1;
-        }
-
-        .top-bar .ts {
-            font-size: 0.75rem;
-            color: var(--testo-soft);
-            letter-spacing: 0.06em;
-        }
-
-        /* ── KPI ROW ── */
-        .kpi-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .kpi {
-            background: #fff;
-            border-radius: var(--r);
-            padding: 1.1rem 1.25rem;
-            border: 1px solid var(--avorio-md);
-        }
-
-        .kpi .kpi-label {
-            font-size: 0.68rem;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--testo-soft);
-            margin-bottom: 0.5rem;
-        }
-
-        .kpi .kpi-val {
-            font-size: 1.9rem;
-            font-weight: 300;
-            color: var(--bordeaux);
-            line-height: 1;
-        }
-
-        .kpi .kpi-sub {
-            font-size: 0.7rem;
-            color: var(--testo-soft);
-            margin-top: 0.3rem;
-        }
-
-        /* ── SECTION TITLE ── */
-        .section-title {
-            font-size: 0.68rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: var(--testo-soft);
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--avorio-md);
-        }
-
-        /* ── SEDE CARDS ── */
-        .sedi-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.25rem;
-        }
-
-        .sede-card {
+        /* ── PANNELLO A TAB ── */
+        .panel {
             background: #fff;
             border-radius: var(--r);
             border: 1px solid var(--avorio-md);
             overflow: hidden;
-            text-decoration: none;
-            color: inherit;
-            display: block;
-            transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+            box-shadow: 0 2px 12px rgba(74,27,46,0.06);
         }
 
-        .sede-card:hover {
-            border-color: var(--bordeaux-md);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(74,27,46,0.1);
+        .tab-bar {
+            display: flex;
+            border-bottom: 1px solid var(--avorio-md);
+            background: #FDFAF4;
         }
 
-        .sede-card-header {
-            background: var(--bordeaux);
-            padding: 0.9rem 1.25rem;
+        .tab-btn {
+            padding: 0.9rem 1.5rem;
+            font-size: 0.78rem;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            color: var(--testo-soft);
+            cursor: pointer;
+            border: none;
+            background: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: color .15s, border-color .15s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .tab-btn:hover { color: var(--bordeaux); }
+        .tab-btn.active { color: var(--bordeaux); border-bottom-color: var(--rame); font-weight: 500; }
+
+        .tab-content { display: none; padding: 1.5rem; }
+        .tab-content.active { display: block; }
+
+        /* ── TAB SEDI ── */
+        .sedi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1rem; }
+
+        .sede-card { background:#FDFAF4; border-radius:var(--r); border:1px solid var(--avorio-md); overflow:hidden; text-decoration:none; color:inherit; display:block; transition:box-shadow .2s,border-color .2s,transform .15s; }
+        .sede-card:hover { border-color:var(--bordeaux-md); transform:translateY(-2px); box-shadow:0 8px 24px rgba(74,27,46,0.1); }
+
+        .sede-card-header { background:var(--bordeaux); padding:0.8rem 1.1rem; display:flex; align-items:center; justify-content:space-between; }
+        .sede-card-header .sede-nome { font-family:'Cormorant Garamond',serif; font-size:1.05rem; font-weight:600; color:var(--avorio); text-transform:capitalize; }
+        .sede-card-header .produttore-badge { font-size:0.6rem; letter-spacing:0.14em; text-transform:uppercase; background:rgba(245,239,224,0.12); color:rgba(245,239,224,0.7); padding:0.2rem 0.55rem; border-radius:4px; }
+
+        .sede-card-body { padding:0.9rem 1.1rem; }
+        .metric-row { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; margin-bottom:0.6rem; }
+        .metric { display:flex; flex-direction:column; gap:0.1rem; }
+        .metric .m-label { font-size:0.62rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--testo-soft); }
+        .metric .m-val { font-size:1.2rem; font-weight:300; color:var(--testo); line-height:1; }
+        .metric .m-val.danger { color:var(--danger); }
+        .metric .m-val.warn   { color:var(--warn); }
+        .metric .m-unit { font-size:0.68rem; color:var(--testo-soft); }
+
+        .status-bar { display:flex; align-items:center; justify-content:space-between; padding-top:0.6rem; border-top:1px solid var(--avorio-md); margin-top:0.2rem; }
+        .badge { display:inline-flex; align-items:center; gap:0.3rem; font-size:0.65rem; font-weight:500; padding:0.2rem 0.6rem; border-radius:99px; }
+        .badge.ok     { background:var(--ok-bg);     color:var(--ok); }
+        .badge.warn   { background:var(--warn-bg);   color:var(--warn); }
+        .badge.danger { background:var(--danger-bg); color:var(--danger); }
+        .badge::before { content:''; width:5px; height:5px; border-radius:50%; background:currentColor; display:inline-block; }
+        .ts-small { font-size:0.65rem; color:var(--testo-soft); }
+
+        /* ── TAB LOG ── */
+        .log-stream {
+            height: 520px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            font-family: 'Inter', monospace;
+            font-size: 0.78rem;
+        }
+
+        .log-entry {
+            display: grid;
+            grid-template-columns: 80px 90px 1fr;
+            gap: 0.75rem;
+            align-items: baseline;
+            padding: 0.45rem 0.75rem;
+            border-radius: 6px;
+            border-left: 2px solid transparent;
+            transition: background .1s;
+        }
+
+        .log-entry:hover { background: #F7F2E9; }
+
+        .log-entry.ok     { border-left-color: var(--ok); }
+        .log-entry.warn   { border-left-color: var(--warn); }
+        .log-entry.danger { border-left-color: var(--danger); }
+        .log-entry.info   { border-left-color: #60A5FA; }
+
+        .log-ts   { color: var(--testo-soft); font-size: 0.7rem; white-space: nowrap; }
+        .log-sede { font-weight: 500; color: var(--bordeaux); font-size: 0.72rem; white-space: nowrap; }
+        .log-msg  { color: var(--testo); }
+        .log-msg .tag {
+            display: inline-block;
+            font-size: 0.6rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            margin-right: 0.4rem;
+            font-weight: 600;
+        }
+        .tag.ok     { background: var(--ok-bg);     color: var(--ok); }
+        .tag.warn   { background: var(--warn-bg);   color: var(--warn); }
+        .tag.danger { background: var(--danger-bg); color: var(--danger); }
+        .tag.info   { background: #EFF6FF; color: #2563EB; }
+
+        .log-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-        }
-
-        .sede-card-header .sede-nome {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--avorio);
-            text-transform: capitalize;
-        }
-
-        .sede-card-header .produttore-badge {
-            font-size: 0.62rem;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            background: rgba(245,239,224,0.12);
-            color: rgba(245,239,224,0.7);
-            padding: 0.25rem 0.6rem;
-            border-radius: 4px;
-        }
-
-        .sede-card-body {
-            padding: 1rem 1.25rem;
-        }
-
-        .metric-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.75rem;
             margin-bottom: 0.75rem;
         }
 
-        .metric {
-            display: flex;
-            flex-direction: column;
-            gap: 0.15rem;
-        }
-
-        .metric .m-label {
-            font-size: 0.65rem;
-            letter-spacing: 0.1em;
+        .log-header .log-title {
+            font-size: 0.68rem;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
             color: var(--testo-soft);
         }
 
-        .metric .m-val {
-            font-size: 1.3rem;
-            font-weight: 300;
-            color: var(--testo);
-            line-height: 1;
-        }
-
-        .metric .m-val.danger { color: var(--danger); }
-        .metric .m-val.warn   { color: var(--warn); }
-
-        .metric .m-unit {
-            font-size: 0.7rem;
-            color: var(--testo-soft);
-        }
-
-        .status-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding-top: 0.75rem;
-            border-top: 1px solid var(--avorio-md);
-            margin-top: 0.25rem;
-        }
-
-        .badge {
+        .live-dot {
             display: inline-flex;
             align-items: center;
-            gap: 0.3rem;
-            font-size: 0.68rem;
-            font-weight: 500;
-            padding: 0.25rem 0.65rem;
-            border-radius: 99px;
+            gap: 0.35rem;
+            font-size: 0.65rem;
+            color: var(--ok);
+            letter-spacing: 0.1em;
         }
 
-        .badge.ok     { background: var(--ok-bg);     color: var(--ok); }
-        .badge.warn   { background: var(--warn-bg);   color: var(--warn); }
-        .badge.danger { background: var(--danger-bg); color: var(--danger); }
-
-        .badge::before {
+        .live-dot::before {
             content: '';
-            width: 5px; height: 5px;
+            width: 6px; height: 6px;
             border-radius: 50%;
-            background: currentColor;
-            display: inline-block;
+            background: var(--ok);
+            animation: pulse 1.5s infinite;
         }
 
-        .ts-small {
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        /* ── TAB GRAFICI ── */
+        .grafici-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+        }
+
+        .chart-card {
+            background: #FDFAF4;
+            border-radius: var(--r);
+            border: 1px solid var(--avorio-md);
+            padding: 1.1rem 1.25rem;
+        }
+
+        .chart-card .chart-title {
             font-size: 0.68rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
             color: var(--testo-soft);
+            margin-bottom: 0.9rem;
         }
 
-        /* ── EMPTY STATE ── */
-        .empty-state {
-            text-align: center;
-            padding: 4rem 2rem;
-            color: var(--testo-soft);
-            font-size: 0.9rem;
+        .chart-wrap { position:relative; height:180px; }
+
+        /* gauge */
+        .gauge-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
         }
+
+        .gauge-card {
+            background: #FDFAF4;
+            border: 1px solid var(--avorio-md);
+            border-radius: var(--r);
+            padding: 0.9rem 1rem;
+            text-align: center;
+        }
+
+        .gauge-card .g-label { font-size:0.62rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--testo-soft); margin-bottom:0.4rem; }
+        .gauge-card .g-val   { font-size:1.9rem; font-weight:300; color:var(--bordeaux); line-height:1; }
+        .gauge-card .g-val.danger { color:var(--danger); }
+        .gauge-card .g-val.warn   { color:var(--warn); }
+        .gauge-card .g-unit  { font-size:0.7rem; color:var(--testo-soft); }
+        .gauge-card .g-bar   { height:4px; border-radius:2px; background:var(--avorio-md); margin-top:0.6rem; overflow:hidden; }
+        .gauge-card .g-fill  { height:100%; border-radius:2px; background:var(--ok); transition:width .5s ease; }
+        .gauge-card .g-fill.warn   { background:var(--warn); }
+        .gauge-card .g-fill.danger { background:var(--danger); }
+
+        .empty-state { text-align:center; padding:3rem 2rem; color:var(--testo-soft); font-size:0.9rem; }
     </style>
 </head>
 <body>
 
-<!-- ── SIDEBAR ── -->
 <aside class="sidebar">
     <div class="brand">
         Cantine Urbani
         <span>Monitoraggio IoT</span>
     </div>
-
     <div class="sidebar-divider"></div>
-
     <p class="sidebar-label">Sedi</p>
     <nav>
         {% set sedi_nav = [('pievepelago','Pievepelago'),('vignola','Vignola'),('carpi','Carpi')] %}
         {% for slug, label in sedi_nav %}
-        <a href="/sede/{{ slug }}">
-            <span class="dot"></span>
-            {{ label }}
-        </a>
+        <a href="/sede/{{ slug }}"><span class="dot"></span>{{ label }}</a>
         {% endfor %}
     </nav>
-
     <div class="sidebar-divider"></div>
     <p class="sidebar-label">Sistema</p>
     <nav>
         <a href="/" class="active">📊 Dashboard</a>
+        <a href="/allerte-zona">📡 Comunicazioni M2M</a>
     </nav>
-
     <div class="sidebar-bottom">
         <div class="user-pill">
             <div class="avatar">{{ nome[:2] }}</div>
@@ -413,7 +291,6 @@
     </div>
 </aside>
 
-<!-- ── MAIN ── -->
 <main class="main">
     <div class="top-bar">
         <h1>{% if ruolo == "admin" %}Panoramica cantine{% else %}Cantine {{ ruolo | capitalize }}{% endif %}</h1>
@@ -425,110 +302,547 @@
         <div class="kpi">
             <div class="kpi-label">Sedi monitorate</div>
             <div class="kpi-val">{{ dati_sedi | length }}</div>
-            <div class="kpi-sub">{% if ruolo == "admin" %}su 9 combinazioni attive{% else %}sedi {{ ruolo }}{% endif %}</div>
+            <div class="kpi-sub">{% if ruolo == "admin" %}su 9 combinazioni{% else %}sedi {{ ruolo }}{% endif %}</div>
         </div>
         <div class="kpi">
-            <div class="kpi-label">Allarmi CO₂ attivi</div>
+            <div class="kpi-label">Allarmi CO₂</div>
             <div class="kpi-val" style="color:{% if allarmi_co2 > 0 %}var(--danger){% else %}var(--ok){% endif %}">{{ allarmi_co2 }}</div>
             <div class="kpi-sub">soglia &gt; 1000 ppm</div>
         </div>
         <div class="kpi">
             <div class="kpi-label">Temp. media interna</div>
             <div class="kpi-val">{{ "%.1f"|format(temp_media) }}°</div>
-            <div class="kpi-sub">valore medio tutte le sedi</div>
+            <div class="kpi-sub">media tutte le sedi</div>
         </div>
         <div class="kpi">
             <div class="kpi-label">Ultimo aggiornamento</div>
-            <div class="kpi-val" style="font-size:1.2rem" id="ultimo-agg">—</div>
+            <div class="kpi-val" style="font-size:1.1rem" id="ultimo-agg">—</div>
             <div class="kpi-sub">dati in tempo reale</div>
         </div>
     </div>
 
-    <!-- GRID SEDI -->
-    <p class="section-title">Stato sedi in tempo reale</p>
+    <!-- PANNELLO A TAB -->
+    <div class="panel">
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="apriTab('sedi', this)">
+                🏠 Stato sedi
+            </button>
+            <button class="tab-btn" onclick="apriTab('log', this)">
+                📋 Log eventi
+            </button>
+            <button class="tab-btn" onclick="apriTab('grafici', this)">
+                📈 Cruscotti
+            </button>
+        </div>
 
-    {% if dati_sedi %}
-    <div class="sedi-grid">
-        {% for item in dati_sedi %}
-        <a class="sede-card" href="/sede/{{ item.sede }}">
-            <div class="sede-card-header">
-                <span class="sede-nome">{{ item.sede | capitalize }}</span>
-                <span class="produttore-badge">{{ item.produttore }}</span>
+        <!-- TAB 1: SEDI -->
+        <div id="tab-sedi" class="tab-content active">
+            {% if dati_sedi %}
+            <div class="sedi-grid">
+                {% for item in dati_sedi %}
+                <a class="sede-card" href="/sede/{{ item.sede }}" data-prod="{{ item.produttore }}">
+                    <div class="sede-card-header">
+                        <span class="sede-nome">{{ item.sede | capitalize }}</span>
+                        <span class="produttore-badge">{{ item.produttore }}</span>
+                    </div>
+                    <div class="sede-card-body">
+                        <div class="metric-row">
+                            <div class="metric">
+                                <span class="m-label">Temp. interna</span>
+                                <span class="m-val {% if item.temp_int and item.temp_int > 24 %}danger{% elif item.temp_int and item.temp_int > 20 %}warn{% endif %}">
+                                    <span data-field="temp_int">{{ "%.1f"|format(item.temp_int) if item.temp_int is not none else '—' }}</span><span class="m-unit"> °C</span>
+                                </span>
+                            </div>
+                            <div class="metric">
+                                <span class="m-label">Temp. esterna</span>
+                                <span class="m-val">{{ "%.1f"|format(item.temp_est) if item.temp_est is not none else '—' }}<span class="m-unit"> °C</span></span>
+                            </div>
+                            <div class="metric">
+                                <span class="m-label">Umidità int.</span>
+                                <span class="m-val">{{ "%.0f"|format(item.umid_int) if item.umid_int is not none else '—' }}<span class="m-unit"> %</span></span>
+                            </div>
+                            <div class="metric">
+                                <span class="m-label">CO₂</span>
+                                <span class="m-val {% if item.co2 and item.co2 > 1000 %}danger{% elif item.co2 and item.co2 > 800 %}warn{% endif %}">
+                                    <span data-field="co2">{{ "%.0f"|format(item.co2) if item.co2 is not none else '—' }}</span><span class="m-unit"> ppm</span>
+                                </span>
+                            </div>
+                        </div>
+                        {% if item.temp_vino_proiettata is not none %}
+                        <div class="metric" style="margin-bottom:0.6rem">
+                            <span class="m-label">🍷 Vino proiettato</span>
+                            <span class="m-val {% if item.temp_vino_proiettata > 24 %}danger{% endif %}">
+                                {{ "%.1f"|format(item.temp_vino_proiettata) }}<span class="m-unit"> °C</span>
+                            </span>
+                        </div>
+                        {% endif %}
+                        <div class="status-bar">
+                            {% if item.allarme_co2 %}
+                                <span class="badge danger">Allarme CO₂</span>
+                            {% elif item.temp_vino_proiettata and item.temp_vino_proiettata > 24 %}
+                                <span class="badge warn">Vino surriscaldato</span>
+                            {% else %}
+                                <span class="badge ok">Parametri nella norma</span>
+                            {% endif %}
+                            {% if item.timestamp %}
+                            <span class="ts-small">{{ item.timestamp }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
             </div>
-            <div class="sede-card-body">
-                <div class="metric-row">
-                    <div class="metric">
-                        <span class="m-label">Temp. interna</span>
-                        <span class="m-val {% if item.temp_int and item.temp_int > 24 %}danger{% elif item.temp_int and item.temp_int > 20 %}warn{% endif %}">
-                            {{ "%.1f"|format(item.temp_int) if item.temp_int is not none else '—' }}<span class="m-unit"> °C</span>
-                        </span>
-                    </div>
-                    <div class="metric">
-                        <span class="m-label">Temp. esterna</span>
-                        <span class="m-val">{{ "%.1f"|format(item.temp_est) if item.temp_est is not none else '—' }}<span class="m-unit"> °C</span></span>
-                    </div>
-                    <div class="metric">
-                        <span class="m-label">Umidità int.</span>
-                        <span class="m-val">{{ "%.0f"|format(item.umid_int) if item.umid_int is not none else '—' }}<span class="m-unit"> %</span></span>
-                    </div>
-                    <div class="metric">
-                        <span class="m-label">CO₂</span>
-                        <span class="m-val {% if item.co2 and item.co2 > 1000 %}danger{% elif item.co2 and item.co2 > 800 %}warn{% endif %}">
-                            {{ "%.0f"|format(item.co2) if item.co2 is not none else '—' }}<span class="m-unit"> ppm</span>
-                        </span>
-                    </div>
-                </div>
+            {% else %}
+            <div class="empty-state">
+                <p style="font-size:2rem; margin-bottom:0.5rem">📡</p>
+                <p>In attesa di dati dai sensori…</p>
+            </div>
+            {% endif %}
+        </div>
 
-                {% if item.temp_vino_proiettata is not none %}
-                <div class="metric" style="margin-bottom: 0.75rem">
-                    <span class="m-label">🍷 Vino proiettato</span>
-                    <span class="m-val {% if item.temp_vino_proiettata > 24 %}danger{% endif %}">
-                        {{ "%.1f"|format(item.temp_vino_proiettata) }}<span class="m-unit"> °C</span>
-                    </span>
-                </div>
-                {% endif %}
-
-                <div class="status-bar">
-                    {% if item.allarme_co2 %}
-                        <span class="badge danger">Allarme CO₂</span>
-                    {% elif item.temp_vino_proiettata and item.temp_vino_proiettata > 24 %}
-                        <span class="badge warn">Vino surriscaldato</span>
-                    {% else %}
-                        <span class="badge ok">Parametri nella norma</span>
-                    {% endif %}
-
-                    {% if item.timestamp %}
-                    <span class="ts-small">{{ item.timestamp.strftime('%H:%M') }}</span>
-                    {% endif %}
+        <!-- TAB 2: LOG -->
+        <div id="tab-log" class="tab-content">
+            <div class="log-header">
+                <span class="log-title">Stream eventi — tutte le sedi</span>
+                <span class="live-dot">Live</span>
+            </div>
+            <div class="log-stream" id="log-stream">
+                <!-- Popolato via JavaScript -->
+                <div style="text-align:center; padding:2rem; color:var(--testo-soft); font-size:0.82rem;">
+                    ⏳ Caricamento log…
                 </div>
             </div>
-        </a>
-        {% endfor %}
-    </div>
+        </div>
 
-    {% else %}
-    <div class="empty-state">
-        <p style="font-size:2rem; margin-bottom: 0.5rem;">📡</p>
-        <p>In attesa di dati dai sensori…</p>
-        <p style="font-size:0.78rem; margin-top:0.4rem;">Verifica che il simulatore e il broker MQTT siano attivi.</p>
+        <!-- TAB 3: GRAFICI -->
+        <div id="tab-grafici" class="tab-content">
+            <!-- Gauge cruscotti -->
+            <div class="gauge-row" id="gauge-row">
+                <!-- Popolato via JavaScript -->
+            </div>
+            <div class="grafici-grid">
+                <div class="chart-card">
+                    <p class="chart-title">Temperature interne — tutte le sedi</p>
+                    <div class="chart-wrap"><canvas id="chartTempAll"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <p class="chart-title">CO₂ media per sede</p>
+                    <div class="chart-wrap"><canvas id="chartCO2All"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <p class="chart-title">Umidità interna — confronto</p>
+                    <div class="chart-wrap"><canvas id="chartUmid"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <p class="chart-title">Temperatura vino proiettata</p>
+                    <div class="chart-wrap"><canvas id="chartVino"></canvas></div>
+                </div>
+            </div>
+        </div>
     </div>
-    {% endif %}
 </main>
 
-<script>
-    function aggiorna() {
-        const ora = new Date();
-        document.getElementById('ora-corrente').textContent =
-            ora.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long' }) +
-            ' — ' + ora.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
-        document.getElementById('ultimo-agg').textContent =
-            ora.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-    }
-    aggiorna();
-    setInterval(aggiorna, 1000);
+<!-- ALARM BANNER -->
+<div id="alarm-banner" style="display:none; position:fixed; bottom:1.5rem; right:1.5rem; z-index:100;
+     background:var(--danger); color:#fff; border-radius:var(--r); padding:1rem 1.5rem;
+     box-shadow:0 8px 32px rgba(163,45,45,0.4); max-width:320px; font-size:0.85rem; line-height:1.5;">
+    <div style="font-weight:500; margin-bottom:0.3rem;" id="alarm-title">🚨 Allarme</div>
+    <div id="alarm-body" style="color:rgba(255,255,255,0.85); font-size:0.78rem;"></div>
+    <button onclick="chiudiAllarme()" style="margin-top:0.75rem; background:rgba(255,255,255,0.2); border:none; color:#fff; padding:0.35rem 0.9rem; border-radius:6px; cursor:pointer; font-size:0.75rem;">✓ Riconosciuto</button>
+</div>
 
-    // Auto-refresh ogni 30s per aggiornare i dati
-    setTimeout(() => location.reload(), 30000);
+<script>
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function fmt1(v) { return v != null ? parseFloat(v).toFixed(1) : '—'; }
+function fmt0(v) { return v != null ? parseFloat(v).toFixed(0) : '—'; }
+function ora()   { return new Date().toLocaleTimeString('it-IT', {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+
+// ── OROLOGIO ──────────────────────────────────────────────────────────────────
+function aggiornaClock() {
+    const now = new Date();
+    document.getElementById('ora-corrente').textContent =
+        now.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'}) +
+        ' — ' + now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('ultimo-agg').textContent = ora();
+}
+aggiornaClock();
+setInterval(aggiornaClock, 1000);
+
+// ── TAB SWITCHING ─────────────────────────────────────────────────────────────
+function apriTab(nome, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + nome).classList.add('active');
+    btn.classList.add('active');
+    if (nome === 'grafici') renderGrafici();
+    if (nome === 'log' && logBuffer.length === 0) caricaLogIniziale();
+}
+
+// ── DATI DA JINJA ─────────────────────────────────────────────────────────────
+const DATI_SEDI = {{ dati_sedi | tojson }};
+
+// ── LOG STREAM ────────────────────────────────────────────────────────────────
+const logBuffer = [];  // buffer locale degli ultimi 200 eventi
+
+function addLog(tipo, sede, produttore, messaggio) {
+    logBuffer.unshift({ tipo, sede, produttore, messaggio, ts: ora() });
+    if (logBuffer.length > 200) logBuffer.pop();
+    renderLog();
+}
+
+function renderLog() {
+    const el = document.getElementById('log-stream');
+    if (!logBuffer.length) {
+        el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--testo-soft);font-size:0.82rem">Nessun evento ancora ricevuto</div>';
+        return;
+    }
+    el.innerHTML = logBuffer.map(e => {
+        const tagClass = e.tipo === 'danger' ? 'danger' : e.tipo === 'warn' ? 'warn' : e.tipo === 'info' ? 'info' : 'ok';
+        const tagLabel = e.tipo === 'danger' ? 'ALLARME' : e.tipo === 'warn' ? 'ATTENZIONE' : e.tipo === 'info' ? 'INFO' : 'OK';
+        return `<div class="log-entry ${tagClass}">
+            <span class="log-ts">${e.ts}</span>
+            <span class="log-sede">${e.produttore}/${e.sede}</span>
+            <span class="log-msg"><span class="tag ${tagClass}">${tagLabel}</span>${e.messaggio}</span>
+        </div>`;
+    }).join('');
+}
+
+// Popola il log con i dati attuali al caricamento
+DATI_SEDI.forEach(d => {
+    if (d.allarme_co2)
+        addLog('danger', d.sede, d.produttore, `CO₂ elevata: ${fmt0(d.co2)} ppm (soglia 1000)`);
+    else if (d.temp_vino_proiettata && d.temp_vino_proiettata > 24)
+        addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
+    else
+        addLog('ok', d.sede, d.produttore, `Parametri nella norma — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
+});
+
+// ── GRAFICI ───────────────────────────────────────────────────────────────────
+let graficiCreati = false;
+let chartTempAll, chartCO2All, chartUmid, chartVino;
+
+function renderGrafici() {
+    if (graficiCreati) return;
+    graficiCreati = true;
+
+    const sedi   = DATI_SEDI.map(d => `${d.produttore}/${d.sede}`);
+    const colors = ['#72243E','#993C1D','#1D9E75','#BA7517','#2563EB','#7C3AED','#0E7490','#B45309','#BE185D'];
+
+    const baseOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { family:'Inter', size:10 }, boxWidth:10 } } },
+        scales: {
+            x: { grid:{ color:'rgba(0,0,0,0.04)' }, ticks:{ font:{ size:9 } } },
+            y: { grid:{ color:'rgba(0,0,0,0.04)' }, ticks:{ font:{ size:9 } } }
+        }
+    };
+
+    // 1. Temperature interne — barre
+    chartTempAll = new Chart(document.getElementById('chartTempAll'), {
+        type: 'bar',
+        data: {
+            labels: sedi,
+            datasets: [{
+                label: 'Temp. interna (°C)',
+                data: DATI_SEDI.map(d => d.temp_int),
+                backgroundColor: DATI_SEDI.map(d =>
+                    d.temp_int > 24 ? 'rgba(163,45,45,0.7)' :
+                    d.temp_int > 20 ? 'rgba(186,117,23,0.5)' : 'rgba(114,36,62,0.4)'),
+                borderRadius: 4,
+            }]
+        },
+        options: { ...baseOpts,
+            scales: { ...baseOpts.scales,
+                y: { ...baseOpts.scales.y, min: 0,
+                    title: { display:true, text:'°C', font:{size:9} } }
+            }
+        }
+    });
+
+    // 2. CO2 — barre orizzontali
+    chartCO2All = new Chart(document.getElementById('chartCO2All'), {
+        type: 'bar',
+        data: {
+            labels: sedi,
+            datasets: [{
+                label: 'CO₂ (ppm)',
+                data: DATI_SEDI.map(d => d.co2),
+                backgroundColor: DATI_SEDI.map(d =>
+                    d.co2 > 1000 ? 'rgba(163,45,45,0.7)' :
+                    d.co2 > 800  ? 'rgba(186,117,23,0.5)' : 'rgba(29,158,117,0.4)'),
+                borderRadius: 4,
+            }]
+        },
+        options: { ...baseOpts, indexAxis: 'y',
+            scales: {
+                x: { ...baseOpts.scales.x, title:{ display:true, text:'ppm', font:{size:9} } },
+                y: { ...baseOpts.scales.y }
+            }
+        }
+    });
+
+    // 3. Umidità — radar
+    chartUmid = new Chart(document.getElementById('chartUmid'), {
+        type: 'radar',
+        data: {
+            labels: sedi,
+            datasets: [
+                { label:'Umidità int. (%)', data: DATI_SEDI.map(d => d.umid_int),
+                  borderColor:'#72243E', backgroundColor:'rgba(114,36,62,0.1)', pointRadius:3 },
+                { label:'Umidità est. (%)', data: DATI_SEDI.map(d => d.umid_est),
+                  borderColor:'#993C1D', backgroundColor:'rgba(153,60,29,0.08)', borderDash:[4,3], pointRadius:2 }
+            ]
+        },
+        options: { responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ labels:{ font:{family:'Inter',size:10}, boxWidth:10 } } },
+            scales:{ r:{ ticks:{ font:{size:9} }, grid:{ color:'rgba(0,0,0,0.06)' } } }
+        }
+    });
+
+    // 4. Temp vino proiettata — linea con soglia critica
+    chartVino = new Chart(document.getElementById('chartVino'), {
+        type: 'line',
+        data: {
+            labels: sedi,
+            datasets: [{
+                label: 'Temp. vino (°C)',
+                data: DATI_SEDI.map(d => d.temp_vino_proiettata),
+                borderColor: '#72243E',
+                backgroundColor: 'rgba(114,36,62,0.08)',
+                borderWidth: 2,
+                pointRadius: 5,
+                pointBackgroundColor: DATI_SEDI.map(d =>
+                    d.temp_vino_proiettata > 24 ? '#A32D2D' : '#1D9E75'),
+                tension: 0.3,
+            }]
+        },
+        options: { ...baseOpts,
+            scales: { ...baseOpts.scales,
+                y: { ...baseOpts.scales.y,
+                    title:{ display:true, text:'°C', font:{size:9} },
+                    // linea rossa a 24°C
+                }
+            },
+            plugins: { ...baseOpts.plugins,
+                annotation: { annotations: {
+                    soglia: { type:'line', yMin:24, yMax:24,
+                        borderColor:'rgba(163,45,45,0.6)', borderWidth:1.5, borderDash:[5,4] }
+                }}
+            }
+        }
+    });
+
+    // Render gauge
+    renderGauge();
+}
+
+function renderGauge() {
+    const validi = DATI_SEDI.filter(d => d.temp_int != null);
+    if (!validi.length) return;
+
+    const tMedia = validi.reduce((s,d) => s + d.temp_int, 0) / validi.length;
+    const co2Max = Math.max(...DATI_SEDI.filter(d=>d.co2).map(d=>d.co2));
+    const umidMedia = validi.reduce((s,d) => s + (d.umid_int||0), 0) / validi.length;
+
+    const gauges = [
+        { label:'Temp. media', val: tMedia.toFixed(1), unit:'°C', pct: Math.min(100, tMedia/40*100),
+          cls: tMedia > 24 ? 'danger' : tMedia > 20 ? 'warn' : '' },
+        { label:'CO₂ massima', val: fmt0(co2Max), unit:'ppm', pct: Math.min(100, co2Max/2000*100),
+          cls: co2Max > 1000 ? 'danger' : co2Max > 800 ? 'warn' : '' },
+        { label:'Umidità media', val: umidMedia.toFixed(0), unit:'%', pct: Math.min(100, umidMedia),
+          cls: umidMedia > 80 ? 'danger' : '' },
+    ];
+
+    document.getElementById('gauge-row').innerHTML = gauges.map(g => `
+        <div class="gauge-card">
+            <div class="g-label">${g.label}</div>
+            <div class="g-val ${g.cls}">${g.val}<span class="g-unit"> ${g.unit}</span></div>
+            <div class="g-bar"><div class="g-fill ${g.cls}" style="width:${g.pct}%"></div></div>
+        </div>
+    `).join('');
+}
+
+function aggiornaGrafici() {
+    if (!chartTempAll || !chartCO2All || !chartUmid || !chartVino) return;
+
+    const sedi = DATI_SEDI.map(d => `${d.produttore}/${d.sede}`);
+
+    chartTempAll.data.labels = sedi;
+    chartTempAll.data.datasets[0].data = DATI_SEDI.map(d => d.temp_int);
+    chartTempAll.data.datasets[0].backgroundColor = DATI_SEDI.map(d =>
+        d.temp_int > 24 ? 'rgba(163,45,45,0.7)' :
+        d.temp_int > 20 ? 'rgba(186,117,23,0.5)' : 'rgba(114,36,62,0.4)');
+    chartTempAll.update('none');
+
+    chartCO2All.data.labels = sedi;
+    chartCO2All.data.datasets[0].data = DATI_SEDI.map(d => d.co2);
+    chartCO2All.data.datasets[0].backgroundColor = DATI_SEDI.map(d =>
+        d.co2 > 1000 ? 'rgba(163,45,45,0.7)' :
+        d.co2 > 800  ? 'rgba(186,117,23,0.5)' : 'rgba(29,158,117,0.4)');
+    chartCO2All.update('none');
+
+    chartUmid.data.labels = sedi;
+    chartUmid.data.datasets[0].data = DATI_SEDI.map(d => d.umid_int);
+    chartUmid.data.datasets[1].data = DATI_SEDI.map(d => d.umid_est);
+    chartUmid.update('none');
+
+    chartVino.data.labels = sedi;
+    chartVino.data.datasets[0].data = DATI_SEDI.map(d => d.temp_vino_proiettata);
+    chartVino.data.datasets[0].pointBackgroundColor = DATI_SEDI.map(d =>
+        d.temp_vino_proiettata > 24 ? '#A32D2D' : '#1D9E75');
+    chartVino.update('none');
+}
+
+// ── POLLING LIVE ──────────────────────────────────────────────────────────────
+let ultimoAllarmeTs = null;
+let audioCtx = null;
+
+function getAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+}
+
+function beep(tipo) {
+    const ctx = getAudio();
+    const freq = tipo === 'VINO_CALDO' ? 880 : 660;
+    [0, 0.35, 0.7].forEach(offset => {
+        const osc = ctx.createOscillator();
+        const g   = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.12, ctx.currentTime + offset);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.25);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime  + offset + 0.25);
+    });
+}
+
+function chiudiAllarme() {
+    document.getElementById('alarm-banner').style.display = 'none';
+    fetch('/api/allarmi/recenti/clear', { method:'POST' });
+}
+
+async function pollAllarmi() {
+    try {
+        const res   = await fetch('/api/allarmi/recenti');
+        const lista = await res.json();
+        if (!lista.length) return;
+        const ult = lista[lista.length - 1];
+        if (ult.ts === ultimoAllarmeTs) return;
+        ultimoAllarmeTs = ult.ts;
+        beep(ult.tipo);
+
+        const titolo = ult.tipo === 'VINO_CALDO' ? '🍷 Vino in surriscaldamento!' : '🚨 CO₂ elevata!';
+        document.getElementById('alarm-title').textContent = titolo;
+        document.getElementById('alarm-body').textContent =
+            `${ult.produttore.toUpperCase()} — ${ult.sede} | ${parseFloat(ult.valore).toFixed(1)}`;
+        document.getElementById('alarm-banner').style.display = 'block';
+
+        // Aggiungi al log
+        addLog('danger', ult.sede, ult.produttore,
+            ult.tipo === 'VINO_CALDO'
+                ? `Vino surriscaldato: ${parseFloat(ult.valore).toFixed(1)}°C`
+                : `CO₂ critica: ${parseFloat(ult.valore).toFixed(0)} ppm`);
+    } catch(e) {}
+}
+
+// Tiene traccia dei valori precedenti per loggare solo i cambiamenti
+const _valoriPrecedenti = {};
+
+async function pollDati() {
+    try {
+        const sediNote = ['pievepelago', 'vignola', 'carpi'];
+        let qualcosaCambiato = false;
+
+        for (const sede of sediNote) {
+            const res  = await fetch(`/api/sede/${sede}/latest`);
+            const list = await res.json();
+
+            list.forEach(d => {
+                const chiave = `${d.produttore}/${d.sede}`;
+                const prec   = _valoriPrecedenti[chiave] || {};
+
+                // Aggiorna DATI_SEDI in memoria con i nuovi valori
+                const idx = DATI_SEDI.findIndex(
+                    x => x.produttore === d.produttore && x.sede === d.sede
+                );
+                if (idx >= 0) {
+                    DATI_SEDI[idx] = d;
+                    qualcosaCambiato = true;
+                }
+
+                // Log solo se lo stato è cambiato
+                if (d.allarme_co2 && !prec.allarme_co2)
+                    addLog('danger', d.sede, d.produttore, `CO₂ ${fmt0(d.co2)} ppm — soglia 1000 superata`);
+                else if (!d.allarme_co2 && prec.allarme_co2)
+                    addLog('ok', d.sede, d.produttore, `CO₂ rientrata: ${fmt0(d.co2)} ppm`);
+                else if (d.temp_vino_proiettata > 24 && !(prec.temp_vino_proiettata > 24))
+                    addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
+                else if (prec.temp_int !== undefined && prec.temp_int !== d.temp_int)
+                    addLog('info', d.sede, d.produttore,
+                        `Aggiornamento — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
+
+                _valoriPrecedenti[chiave] = d;
+                aggiornaCard(d);
+            });
+        }
+
+        // Se i grafici sono aperti e ci sono dati nuovi, riaggiornali
+        if (qualcosaCambiato && graficiCreati) {
+            aggiornaGrafici();
+            renderGauge();
+        }
+
+    } catch(e) {}
+}
+
+function aggiornaCard(d) {
+    // Cerca la card corrispondente tramite href
+    const card = document.querySelector(`.sede-card[href="/sede/${d.sede}"][data-prod="${d.produttore}"]`);
+    if (!card) return;
+    // Aggiorna temp interna
+    const tVal = card.querySelector('[data-field="temp_int"]');
+    if (tVal && d.temp_int != null) {
+        tVal.textContent = parseFloat(d.temp_int).toFixed(1);
+        tVal.parentElement.className = 'm-val' +
+            (d.temp_int > 24 ? ' danger' : d.temp_int > 20 ? ' warn' : '');
+    }
+    // Aggiorna CO2
+    const co2Val = card.querySelector('[data-field="co2"]');
+    if (co2Val && d.co2 != null) {
+        co2Val.textContent = parseFloat(d.co2).toFixed(0);
+        co2Val.parentElement.className = 'm-val' +
+            (d.co2 > 1000 ? ' danger' : d.co2 > 800 ? ' warn' : '');
+    }
+}
+
+// Carica log iniziale dall'API al click sulla tab log
+async function caricaLogIniziale() {
+    try {
+        const sediNote = ['pievepelago','vignola','carpi'];
+        for (const sede of sediNote) {
+            const res  = await fetch(`/api/sede/${sede}/latest`);
+            const list = await res.json();
+            list.forEach(d => {
+                const chiave = `${d.produttore}/${d.sede}`;
+                _valoriPrecedenti[chiave] = d;
+                if (d.allarme_co2)
+                    addLog('danger', d.sede, d.produttore, `CO₂ ${fmt0(d.co2)} ppm — soglia superata`);
+                else if (d.temp_vino_proiettata && d.temp_vino_proiettata > 24)
+                    addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
+                else
+                    addLog('ok', d.sede, d.produttore, `Parametri nella norma — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
+            });
+        }
+    } catch(e) {}
+}
+
+setInterval(pollAllarmi, 5000);
+setInterval(pollDati, 15000);
+setTimeout(pollAllarmi, 1500);
+setTimeout(pollDati, 3000);
 </script>
 </body>
 </html>

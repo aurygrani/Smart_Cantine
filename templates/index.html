@@ -384,6 +384,30 @@
             font-size: 0.9rem;
         }
 
+        /* Righe tabella colorate per stato */
+        tr.row-danger { background: #FEF2F2 !important; }
+        tr.row-warn   { background: #FFFBEB !important; }
+        td.cell-danger { color: var(--danger) !important; font-weight: 500; }
+        td.cell-warn   { color: var(--warn)   !important; font-weight: 500; }
+
+        /* Banner allarme dinamico */
+        #alarm-banner-dinamico {
+            display: none;
+            border-radius: 0 var(--r) var(--r) 0;
+            padding: 0.8rem 1.25rem;
+            margin-bottom: 1.5rem;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border-left: 3px solid;
+            animation: slideIn 0.3s ease-out;
+        }
+        #alarm-banner-dinamico.danger { background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
+        #alarm-banner-dinamico.warn   { background:var(--warn-bg);   color:var(--warn);   border-color:var(--warn); }
+
+        @keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
         /* Flash animation quando un valore cambia in tempo reale */
         @keyframes flash-update {
             0%   { opacity: 0.3; transform: scale(0.97); }
@@ -426,6 +450,7 @@
     <p class="sidebar-label">Sistema</p>
     <nav>
         <a href="/">📊 Dashboard</a>
+        <a href="/allerte-zona">📡 Comunicazioni M2M</a>
     </nav>
 
     <div class="sidebar-bottom">
@@ -465,6 +490,9 @@
         ⚠️ Vino in surriscaldamento — temperatura proiettata: {{ "%.1f"|format(ultimo.temp_vino_proiettata) }}°C
     </div>
     {% endif %}
+
+    <!-- Banner allarme dinamico (aggiornato via JS senza ricaricare) -->
+    <div id="alarm-banner-dinamico"></div>
 
     <!-- Live panel — i valori vengono aggiornati in tempo reale via JS -->
     <div class="live-panel">
@@ -528,7 +556,12 @@
 
     <!-- Tabella storico -->
     <div class="history-card">
-        <div class="card-header">Storico campionamenti</div>
+        <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+            Storico campionamenti
+            <span style="font-size:0.68rem; color:var(--testo-soft); font-weight:400; letter-spacing:0">
+                ultime {{ dati | length }} righe
+            </span>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -543,16 +576,24 @@
             </thead>
             <tbody>
                 {% for d in dati %}
-                <tr>
+                <tr class="{% if d.allarme_co2 %}row-danger{% elif d.temp_vino_proiettata and d.temp_vino_proiettata > 24 %}row-warn{% endif %}">
                     <td>{{ d.timestamp.strftime('%d/%m %H:%M:%S') }}</td>
-                    <td>{{ "%.1f"|format(d.temp_int) if d.temp_int else '—' }}</td>
+                    <td class="{% if d.temp_int and d.temp_int > 24 %}cell-danger{% elif d.temp_int and d.temp_int > 20 %}cell-warn{% endif %}">
+                        {{ "%.1f"|format(d.temp_int) if d.temp_int else '—' }}
+                    </td>
                     <td>{{ "%.1f"|format(d.temp_est) if d.temp_est else '—' }}</td>
                     <td>{{ "%.0f"|format(d.umid_int) if d.umid_int else '—' }}</td>
-                    <td>{{ "%.0f"|format(d.co2) if d.co2 else '—' }}</td>
-                    <td>{{ "%.1f"|format(d.temp_vino_proiettata) if d.temp_vino_proiettata else '—' }}</td>
+                    <td class="{% if d.co2 and d.co2 > 1000 %}cell-danger{% elif d.co2 and d.co2 > 800 %}cell-warn{% endif %}">
+                        {{ "%.0f"|format(d.co2) if d.co2 else '—' }}
+                    </td>
+                    <td class="{% if d.temp_vino_proiettata and d.temp_vino_proiettata > 24 %}cell-danger{% endif %}">
+                        {{ "%.1f"|format(d.temp_vino_proiettata) if d.temp_vino_proiettata else '—' }}
+                    </td>
                     <td>
                         {% if d.allarme_co2 %}
                             <span class="td-allarme danger">CO₂ alta</span>
+                        {% elif d.temp_vino_proiettata and d.temp_vino_proiettata > 24 %}
+                            <span class="td-allarme warn">Vino caldo</span>
                         {% else %}
                             <span class="td-allarme ok">OK</span>
                         {% endif %}
@@ -740,6 +781,61 @@ async function pollLive() {
 // ma abbastanza frequente da sembrare in tempo reale
 setInterval(pollLive, 5000);
 setTimeout(pollLive, 1000); // primo aggiornamento subito dopo il caricamento
+
+// ── POLLING ALLARMI + AUDIO ───────────────────────────────────────────────────
+let audioCtx = null;
+let ultimoAllarmeTs = null;
+
+function getAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+}
+
+function beep(tipo) {
+    const ctx  = getAudio();
+    const freq = tipo === 'VINO_CALDO' ? 880 : 660;
+    [0, 0.35, 0.7].forEach(offset => {
+        const osc = ctx.createOscillator();
+        const g   = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.12, ctx.currentTime + offset);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.25);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime  + offset + 0.25);
+    });
+}
+
+async function pollAllarmi() {
+    try {
+        const res   = await fetch('/api/allarmi/recenti');
+        const lista = await res.json();
+        if (!lista.length) return;
+
+        const ult = lista[lista.length - 1];
+        if (ult.ts === ultimoAllarmeTs) return;
+        ultimoAllarmeTs = ult.ts;
+
+        // Suona solo se l'allarme riguarda questa sede
+        if (ult.sede !== SEDE) return;
+
+        beep(ult.tipo);
+
+        // Mostra il banner dinamico
+        const banner = document.getElementById('alarm-banner-dinamico');
+        const isVino = ult.tipo === 'VINO_CALDO';
+        banner.className = isVino ? 'warn' : 'danger';
+        banner.style.display = 'flex';
+        banner.innerHTML = isVino
+            ? `⚠️ Vino in surriscaldamento — temperatura proiettata: ${parseFloat(ult.valore).toFixed(1)}°C`
+            : `🚨 Allarme CO₂ — valore: ${parseFloat(ult.valore).toFixed(0)} ppm (soglia 1000 ppm)`;
+
+    } catch(e) {}
+}
+
+setInterval(pollAllarmi, 5000);
+setTimeout(pollAllarmi, 2000);
 </script>
 </body>
 </html>

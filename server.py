@@ -320,9 +320,24 @@ def home():
     allarmi_co2 = sum(1 for d in ultimi if d.allarme_co2)
     temp_media = (sum(d.temp_int for d in ultimi if d.temp_int) / len(ultimi)) if ultimi else 0
 
+    # Converte gli oggetti SQLAlchemy in dizionari semplici per il template
+    dati_sedi_json = [{
+        'produttore': d.produttore,
+        'sede': d.sede,
+        'timestamp': d.timestamp.strftime('%H:%M') if d.timestamp else None,
+        'temp_int': float(d.temp_int) if d.temp_int is not None else None,
+        'temp_est': float(d.temp_est) if d.temp_est is not None else None,
+        'umid_int': float(d.umid_int) if d.umid_int is not None else None,
+        'umid_est': float(d.umid_est) if d.umid_est is not None else None,
+        'co2': float(d.co2) if d.co2 is not None else None,
+        'allarme_co2': bool(d.allarme_co2),
+        'temp_vino_proiettata': float(d.temp_vino_proiettata) if d.temp_vino_proiettata is not None else None,
+    } for d in ultimi]
+
     return render_template('hub.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
-                           produttori_visibili=autorizzati, dati_sedi=ultimi,
+                           produttori_visibili=autorizzati,
+                           dati_sedi=dati_sedi_json,  # ← lista di dizionari, non oggetti SQLAlchemy
                            allarmi_co2=allarmi_co2, temp_media=temp_media)
 
 
