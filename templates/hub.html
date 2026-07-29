@@ -510,12 +510,20 @@ function renderLog() {
 // Popola il log con i dati attuali al caricamento
 DATI_SEDI.forEach(d => {
     if (d.allarme_co2)
-        addLog('danger', d.sede, d.produttore, `CO₂ elevata: ${fmt0(d.co2)} ppm (soglia 1000)`);
+        addLog('danger', d.sede, d.produttore, `🚨 CO₂ elevata: ${fmt0(d.co2)} ppm (soglia 1000)`);
     else if (d.temp_vino_proiettata && d.temp_vino_proiettata > 24)
-        addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
+        addLog('warn', d.sede, d.produttore, `🍷 Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
+    else if (d.temp_int != null && d.temp_int > 24)
+        addLog('danger', d.sede, d.produttore, `🌡️ Temp. interna alta: ${fmt1(d.temp_int)}°C`);
+    else if (d.temp_int != null && d.temp_int < 10)
+        addLog('warn', d.sede, d.produttore, `❄️ Temp. interna bassa: ${fmt1(d.temp_int)}°C`);
     else
-        addLog('ok', d.sede, d.produttore, `Parametri nella norma — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
+        addLog('ok', d.sede, d.produttore, `T.int ${fmt1(d.temp_int)}°C | CO₂ ${fmt0(d.co2)} ppm`);
 });
+
+// Pre-popola i gauge subito al caricamento (anche prima di aprire la tab grafici)
+// Così i valori sono già pronti quando l'utente clicca su Cruscotti
+setTimeout(renderGauge, 500);
 
 // ── GRAFICI ───────────────────────────────────────────────────────────────────
 let graficiCreati = false;
@@ -751,6 +759,10 @@ async function pollAllarmi() {
 // Tiene traccia dei valori precedenti per loggare solo i cambiamenti
 const _valoriPrecedenti = {};
 
+// Soglie per rilevare anomalie di temperatura interna
+const SOGLIA_TEMP_ALTA  = 24.0;   // °C → AC guasto o surriscaldamento
+const SOGLIA_TEMP_BASSA = 10.0;   // °C → riscaldamento guasto o freddo improvviso
+
 async function pollDati() {
     try {
         const sediNote = ['pievepelago', 'vignola', 'carpi'];
@@ -773,26 +785,64 @@ async function pollDati() {
                     qualcosaCambiato = true;
                 }
 
-                // Log solo se lo stato è cambiato
+                const tInt = d.temp_int;
+                const tPrec = prec.temp_int;
+
+                // ── Log eventi di stato ───────────────────────────────────────
+
+                // CO₂ supera soglia
                 if (d.allarme_co2 && !prec.allarme_co2)
-                    addLog('danger', d.sede, d.produttore, `CO₂ ${fmt0(d.co2)} ppm — soglia 1000 superata`);
+                    addLog('danger', d.sede, d.produttore,
+                        `🚨 CO₂ critica: ${fmt0(d.co2)} ppm — soglia 1000 superata`);
+
+                // CO₂ rientra
                 else if (!d.allarme_co2 && prec.allarme_co2)
-                    addLog('ok', d.sede, d.produttore, `CO₂ rientrata: ${fmt0(d.co2)} ppm`);
+                    addLog('ok', d.sede, d.produttore,
+                        `✅ CO₂ rientrata nella norma: ${fmt0(d.co2)} ppm`);
+
+                // Vino surriscaldato
                 else if (d.temp_vino_proiettata > 24 && !(prec.temp_vino_proiettata > 24))
-                    addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
-                else if (prec.temp_int !== undefined && prec.temp_int !== d.temp_int)
+                    addLog('warn', d.sede, d.produttore,
+                        `🍷 Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C (soglia 24°C)`);
+
+                // Vino torna normale
+                else if (prec.temp_vino_proiettata > 24 && d.temp_vino_proiettata <= 24)
+                    addLog('ok', d.sede, d.produttore,
+                        `✅ Temperatura vino rientrata: ${fmt1(d.temp_vino_proiettata)}°C`);
+
+                // Anomalia CALDO: temp interna supera soglia alta (AC guasto)
+                if (tInt != null && tInt > SOGLIA_TEMP_ALTA && (tPrec == null || tPrec <= SOGLIA_TEMP_ALTA))
+                    addLog('danger', d.sede, d.produttore,
+                        `🌡️ Temp. interna alta: ${fmt1(tInt)}°C — possibile guasto AC`);
+
+                // Anomalia FREDDO: temp interna scende sotto soglia bassa
+                if (tInt != null && tInt < SOGLIA_TEMP_BASSA && (tPrec == null || tPrec >= SOGLIA_TEMP_BASSA))
+                    addLog('warn', d.sede, d.produttore,
+                        `❄️ Temp. interna bassa: ${fmt1(tInt)}°C — possibile guasto riscaldamento`);
+
+                // Temp interna torna normale dopo anomalia
+                if (tInt != null && tPrec != null &&
+                    (tPrec > SOGLIA_TEMP_ALTA || tPrec < SOGLIA_TEMP_BASSA) &&
+                    tInt >= SOGLIA_TEMP_BASSA && tInt <= SOGLIA_TEMP_ALTA)
+                    addLog('ok', d.sede, d.produttore,
+                        `✅ Temperatura interna ripristinata: ${fmt1(tInt)}°C`);
+
+                // Aggiornamento generico (ogni ciclo, per avere un log continuo)
+                else if (tPrec !== undefined && tPrec !== tInt && d.allarme_co2 === prec.allarme_co2)
                     addLog('info', d.sede, d.produttore,
-                        `Aggiornamento — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
+                        `T.int ${fmt1(tInt)}°C | T.est ${fmt1(d.temp_est)}°C | CO₂ ${fmt0(d.co2)} ppm`);
 
                 _valoriPrecedenti[chiave] = d;
                 aggiornaCard(d);
             });
         }
 
-        // Se i grafici sono aperti e ci sono dati nuovi, riaggiornali
-        if (qualcosaCambiato && graficiCreati) {
-            aggiornaGrafici();
+        // Aggiorna sempre gauge e grafici quando arrivano dati nuovi,
+        // indipendentemente dal fatto che la tab grafici sia aperta o no.
+        // renderGauge() è leggera (solo HTML), aggiornaGrafici() solo se già creati.
+        if (qualcosaCambiato) {
             renderGauge();
+            if (graficiCreati) aggiornaGrafici();
         }
 
     } catch(e) {}
@@ -839,10 +889,33 @@ async function caricaLogIniziale() {
     } catch(e) {}
 }
 
-setInterval(pollAllarmi, 5000);
-setInterval(pollDati, 15000);
-setTimeout(pollAllarmi, 1500);
-setTimeout(pollDati, 3000);
+// ── POLLING EVENTI M2M ───────────────────────────────────────────────────────
+// Legge gli ultimi eventi M2M dal DB e li mostra nel log
+let ultimoEventoM2M_id = 0;
+
+async function pollEventiM2M() {
+    try {
+        const res    = await fetch('/api/eventi-m2m/recenti');
+        if (!res.ok) return;
+        const eventi = await res.json();
+        eventi.forEach(e => {
+            if (e.id <= ultimoEventoM2M_id) return;
+            ultimoEventoM2M_id = e.id;
+
+            const tipo = e.pattern === 'GEO' ? 'info' : 'warn';
+            const icon = e.pattern === 'GEO' ? '🌍' : '🏭';
+            addLog(tipo, e.mittente.split('/')[1] || '—', e.mittente.split('/')[0] || '—',
+                `${icon} [M2M ${e.pattern}] ${e.tipo} → ${e.messaggio.slice(0, 120)}…`);
+        });
+    } catch(e) {}
+}
+
+setInterval(pollAllarmi,    5000);
+setInterval(pollDati,      15000);
+setInterval(pollEventiM2M, 20000);
+setTimeout(pollAllarmi,    1500);
+setTimeout(pollDati,       3000);
+setTimeout(pollEventiM2M,  6000);
 </script>
 </body>
 </html>

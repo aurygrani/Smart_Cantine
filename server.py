@@ -421,6 +421,25 @@ def api_latest(nome_sede):
     } for d in ultimi])
 
 
+@app.route('/api/eventi-m2m/recenti')
+@login_required
+def api_eventi_m2m():
+    """Ultimi 20 eventi M2M — usato dal frontend per popolare il log live."""
+    eventi = (EventoM2M.query
+              .order_by(EventoM2M.timestamp.desc())
+              .limit(20).all())
+    return jsonify([{
+        'id':          e.id,
+        'timestamp':   e.timestamp.isoformat() if e.timestamp else None,
+        'pattern':     e.pattern,
+        'tipo':        e.tipo,
+        'mittente':    e.mittente,
+        'destinatari': e.destinatari,
+        'valore':      float(e.valore) if e.valore is not None else None,
+        'messaggio':   e.messaggio,
+    } for e in eventi])
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = False
