@@ -417,9 +417,16 @@
         <!-- TAB 3: GRAFICI -->
         <div id="tab-grafici" class="tab-content">
             <!-- Gauge cruscotti -->
-            <div class="gauge-row" id="gauge-row">
-                <!-- Popolato via JavaScript -->
+            <div class="gauge-row" id="gauge-row"></div>
+
+            <!-- ML: temp vino smorzata, preavviso soglia, timer impianti, fascia efficienza -->
+            <p style="font-size:0.68rem;letter-spacing:0.18em;text-transform:uppercase;
+                color:var(--testo-soft);margin:1rem 0 0.75rem;padding-bottom:0.5rem;
+                border-bottom:1px solid var(--avorio-md)">🤖 Modelli ML — Stato per sede</p>
+            <div id="ml-panel" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-bottom:1.25rem;">
+                <div style="color:var(--testo-soft);font-size:0.8rem;padding:1rem">Caricamento dati ML…</div>
             </div>
+
             <div class="grafici-grid">
                 <div class="chart-card">
                     <p class="chart-title">Temperature interne — tutte le sedi</p>
@@ -510,20 +517,12 @@ function renderLog() {
 // Popola il log con i dati attuali al caricamento
 DATI_SEDI.forEach(d => {
     if (d.allarme_co2)
-        addLog('danger', d.sede, d.produttore, `🚨 CO₂ elevata: ${fmt0(d.co2)} ppm (soglia 1000)`);
+        addLog('danger', d.sede, d.produttore, `CO₂ elevata: ${fmt0(d.co2)} ppm (soglia 1000)`);
     else if (d.temp_vino_proiettata && d.temp_vino_proiettata > 24)
-        addLog('warn', d.sede, d.produttore, `🍷 Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
-    else if (d.temp_int != null && d.temp_int > 24)
-        addLog('danger', d.sede, d.produttore, `🌡️ Temp. interna alta: ${fmt1(d.temp_int)}°C`);
-    else if (d.temp_int != null && d.temp_int < 10)
-        addLog('warn', d.sede, d.produttore, `❄️ Temp. interna bassa: ${fmt1(d.temp_int)}°C`);
+        addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
     else
-        addLog('ok', d.sede, d.produttore, `T.int ${fmt1(d.temp_int)}°C | CO₂ ${fmt0(d.co2)} ppm`);
+        addLog('ok', d.sede, d.produttore, `Parametri nella norma — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
 });
-
-// Pre-popola i gauge subito al caricamento (anche prima di aprire la tab grafici)
-// Così i valori sono già pronti quando l'utente clicca su Cruscotti
-setTimeout(renderGauge, 500);
 
 // ── GRAFICI ───────────────────────────────────────────────────────────────────
 let graficiCreati = false;
@@ -759,10 +758,6 @@ async function pollAllarmi() {
 // Tiene traccia dei valori precedenti per loggare solo i cambiamenti
 const _valoriPrecedenti = {};
 
-// Soglie per rilevare anomalie di temperatura interna
-const SOGLIA_TEMP_ALTA  = 24.0;   // °C → AC guasto o surriscaldamento
-const SOGLIA_TEMP_BASSA = 10.0;   // °C → riscaldamento guasto o freddo improvviso
-
 async function pollDati() {
     try {
         const sediNote = ['pievepelago', 'vignola', 'carpi'];
@@ -785,64 +780,26 @@ async function pollDati() {
                     qualcosaCambiato = true;
                 }
 
-                const tInt = d.temp_int;
-                const tPrec = prec.temp_int;
-
-                // ── Log eventi di stato ───────────────────────────────────────
-
-                // CO₂ supera soglia
+                // Log solo se lo stato è cambiato
                 if (d.allarme_co2 && !prec.allarme_co2)
-                    addLog('danger', d.sede, d.produttore,
-                        `🚨 CO₂ critica: ${fmt0(d.co2)} ppm — soglia 1000 superata`);
-
-                // CO₂ rientra
+                    addLog('danger', d.sede, d.produttore, `CO₂ ${fmt0(d.co2)} ppm — soglia 1000 superata`);
                 else if (!d.allarme_co2 && prec.allarme_co2)
-                    addLog('ok', d.sede, d.produttore,
-                        `✅ CO₂ rientrata nella norma: ${fmt0(d.co2)} ppm`);
-
-                // Vino surriscaldato
+                    addLog('ok', d.sede, d.produttore, `CO₂ rientrata: ${fmt0(d.co2)} ppm`);
                 else if (d.temp_vino_proiettata > 24 && !(prec.temp_vino_proiettata > 24))
-                    addLog('warn', d.sede, d.produttore,
-                        `🍷 Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C (soglia 24°C)`);
-
-                // Vino torna normale
-                else if (prec.temp_vino_proiettata > 24 && d.temp_vino_proiettata <= 24)
-                    addLog('ok', d.sede, d.produttore,
-                        `✅ Temperatura vino rientrata: ${fmt1(d.temp_vino_proiettata)}°C`);
-
-                // Anomalia CALDO: temp interna supera soglia alta (AC guasto)
-                if (tInt != null && tInt > SOGLIA_TEMP_ALTA && (tPrec == null || tPrec <= SOGLIA_TEMP_ALTA))
-                    addLog('danger', d.sede, d.produttore,
-                        `🌡️ Temp. interna alta: ${fmt1(tInt)}°C — possibile guasto AC`);
-
-                // Anomalia FREDDO: temp interna scende sotto soglia bassa
-                if (tInt != null && tInt < SOGLIA_TEMP_BASSA && (tPrec == null || tPrec >= SOGLIA_TEMP_BASSA))
-                    addLog('warn', d.sede, d.produttore,
-                        `❄️ Temp. interna bassa: ${fmt1(tInt)}°C — possibile guasto riscaldamento`);
-
-                // Temp interna torna normale dopo anomalia
-                if (tInt != null && tPrec != null &&
-                    (tPrec > SOGLIA_TEMP_ALTA || tPrec < SOGLIA_TEMP_BASSA) &&
-                    tInt >= SOGLIA_TEMP_BASSA && tInt <= SOGLIA_TEMP_ALTA)
-                    addLog('ok', d.sede, d.produttore,
-                        `✅ Temperatura interna ripristinata: ${fmt1(tInt)}°C`);
-
-                // Aggiornamento generico (ogni ciclo, per avere un log continuo)
-                else if (tPrec !== undefined && tPrec !== tInt && d.allarme_co2 === prec.allarme_co2)
+                    addLog('warn', d.sede, d.produttore, `Vino surriscaldato: ${fmt1(d.temp_vino_proiettata)}°C`);
+                else if (prec.temp_int !== undefined && prec.temp_int !== d.temp_int)
                     addLog('info', d.sede, d.produttore,
-                        `T.int ${fmt1(tInt)}°C | T.est ${fmt1(d.temp_est)}°C | CO₂ ${fmt0(d.co2)} ppm`);
+                        `Aggiornamento — T.int ${fmt1(d.temp_int)}°C CO₂ ${fmt0(d.co2)} ppm`);
 
                 _valoriPrecedenti[chiave] = d;
                 aggiornaCard(d);
             });
         }
 
-        // Aggiorna sempre gauge e grafici quando arrivano dati nuovi,
-        // indipendentemente dal fatto che la tab grafici sia aperta o no.
-        // renderGauge() è leggera (solo HTML), aggiornaGrafici() solo se già creati.
-        if (qualcosaCambiato) {
+        // Se i grafici sono aperti e ci sono dati nuovi, riaggiornali
+        if (qualcosaCambiato && graficiCreati) {
+            aggiornaGrafici();
             renderGauge();
-            if (graficiCreati) aggiornaGrafici();
         }
 
     } catch(e) {}
@@ -889,8 +846,68 @@ async function caricaLogIniziale() {
     } catch(e) {}
 }
 
+// ── POLLING ML ───────────────────────────────────────────────────────────────
+let ultimoAllarmeML_id = 0;
+
+async function pollML() {
+    try {
+        const res  = await fetch('/api/ml/stato-sedi');
+        if (!res.ok) return;
+        const list = await res.json();
+
+        const panel = document.getElementById('ml-panel');
+        if (panel) {
+            panel.innerHTML = list.map(d => {
+                let vinoHtml = '';
+                if (d.minuti_alla_soglia != null && d.trend_pendenza > 0) {
+                    const ore = Math.floor(d.minuti_alla_soglia / 60);
+                    const min = Math.round(d.minuti_alla_soglia % 60);
+                    const etiq = ore > 0 ? `${ore}h ${min}min` : `${min} min`;
+                    const cls = d.minuti_alla_soglia < 30 ? 'danger' : d.minuti_alla_soglia < 60 ? 'warn' : 'ok';
+                    const colore = cls === 'ok' ? 'var(--ok)' : cls === 'warn' ? 'var(--warn)' : 'var(--danger)';
+                    vinoHtml = `<div style="margin-top:0.5rem;font-size:0.72rem;color:${colore}">⏱ Soglia vino tra <strong>${etiq}</strong></div>`;
+                } else if (d.temp_vino_smorzata != null) {
+                    vinoHtml = `<div style="margin-top:0.5rem;font-size:0.72rem;color:var(--ok)">✅ Trend vino stabile</div>`;
+                }
+
+                let timerHtml = '';
+                if (d.timer_ac_minuti != null) {
+                    timerHtml = `<div style="margin-top:0.4rem;font-size:0.7rem;color:var(--testo-soft)">
+                        AC: <strong>${d.timer_ac_minuti}min</strong> · Umid: <strong>${d.timer_umid_minuti ?? 0}min</strong></div>`;
+                }
+
+                let fasciaHtml = '';
+                if (d.fascia) {
+                    const fc = d.colore === 'verde' ? 'ok' : d.colore === 'giallo' ? 'warn' : 'danger';
+                    fasciaHtml = `<div style="margin-top:0.4rem"><span style="font-size:0.65rem;letter-spacing:0.1em;
+                        text-transform:uppercase;background:var(--${fc}-bg);color:var(--${fc});
+                        padding:0.15rem 0.5rem;border-radius:4px">Fascia ${d.fascia}</span></div>`;
+                }
+
+                return `<div style="background:#FDFAF4;border:1px solid var(--avorio-md);border-radius:var(--r);padding:1rem">
+                    <div style="font-size:0.65rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--testo-soft);margin-bottom:0.4rem">
+                        ${d.produttore} / ${d.sede}</div>
+                    <div style="font-size:1rem;font-weight:300;color:var(--bordeaux)">
+                        🍷 ${d.temp_vino_smorzata != null ? d.temp_vino_smorzata.toFixed(1) + '°C' : '—'}</div>
+                    ${vinoHtml}${timerHtml}${fasciaHtml}</div>`;
+            }).join('');
+        }
+
+        // Allarmi ML → log
+        const resML = await fetch('/api/ml/allarmi-ml');
+        if (resML.ok) {
+            const allarmi = await resML.json();
+            allarmi.forEach(a => {
+                if (a.id <= ultimoAllarmeML_id) return;
+                ultimoAllarmeML_id = a.id;
+                addLog(a.esito === 'danger' ? 'danger' : 'warn',
+                    a.sede, a.produttore, `🤖 [ML] ${a.dettaglio}`);
+            });
+        }
+    } catch(e) {}
+}
+
 // ── POLLING EVENTI M2M ───────────────────────────────────────────────────────
-// Legge gli ultimi eventi M2M dal DB e li mostra nel log
 let ultimoEventoM2M_id = 0;
 
 async function pollEventiM2M() {
@@ -901,11 +918,10 @@ async function pollEventiM2M() {
         eventi.forEach(e => {
             if (e.id <= ultimoEventoM2M_id) return;
             ultimoEventoM2M_id = e.id;
-
             const tipo = e.pattern === 'GEO' ? 'info' : 'warn';
             const icon = e.pattern === 'GEO' ? '🌍' : '🏭';
             addLog(tipo, e.mittente.split('/')[1] || '—', e.mittente.split('/')[0] || '—',
-                `${icon} [M2M ${e.pattern}] ${e.tipo} → ${e.messaggio.slice(0, 120)}…`);
+                `${icon} [M2M ${e.pattern}] ${e.tipo} — ${(e.messaggio || '').slice(0, 100)}`);
         });
     } catch(e) {}
 }
@@ -913,9 +929,11 @@ async function pollEventiM2M() {
 setInterval(pollAllarmi,    5000);
 setInterval(pollDati,      15000);
 setInterval(pollEventiM2M, 20000);
+setInterval(pollML,        30000);
 setTimeout(pollAllarmi,    1500);
 setTimeout(pollDati,       3000);
 setTimeout(pollEventiM2M,  6000);
+setTimeout(pollML,         8000);
 </script>
 </body>
 </html>
