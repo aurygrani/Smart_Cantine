@@ -180,6 +180,34 @@ class FasciaEfficienza(db.Model):
     delta_temp      = db.Column(db.Float)        # differenza int-est
 
 
+class ConfigurazioneSede(db.Model):
+    """
+    Parametri fisici fissi per ogni sede — inseriti una volta dall'operatore.
+    Usati dai modelli ML della collega che richiedono volume, isolamento e target.
+
+    prevedi_minuti_sistemi() vuole: temp_est, temp_int, umid_est, umid_int,
+                                    target_temp, target_umid, isolamento, volume
+    prevedi_fascia_sede()    vuole: temp_est, umidita_est, target_int, isolamento, volume
+    """
+    id            = db.Column(db.Integer, primary_key=True)
+    produttore    = db.Column(db.String(50), nullable=False)
+    sede          = db.Column(db.String(50), nullable=False)
+    # Parametri fisici della cantina
+    volume_m3     = db.Column(db.Float, default=500.0)   # m³ — volume interno cantina
+    isolamento    = db.Column(db.Float, default=1.0)     # W/m²K — trasmittanza termica pareti
+    # Target ambientali (soglie ottimali per il vino)
+    target_temp   = db.Column(db.Float, default=18.0)   # °C target temperatura interna
+    target_umid   = db.Column(db.Float, default=65.0)   # % target umidità interna
+    # Soglie di allarme personalizzate per sede (sovrascrivono i default globali)
+    soglia_co2    = db.Column(db.Float, default=1000.0)  # ppm — può essere abbassata da M2M
+    soglia_temp_alta  = db.Column(db.Float, default=26.0)
+    soglia_temp_bassa = db.Column(db.Float, default=10.0)
+    soglia_umid_alta  = db.Column(db.Float, default=80.0)
+    # Metadati
+    note          = db.Column(db.String(200))
+    aggiornato_il = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class EventoM2M(db.Model):
     """
     Registra tutti gli eventi di comunicazione tra digital twin (Legge 2 Vezzani).
@@ -226,6 +254,29 @@ with app.app_context():
         except Exception:
             pass  # Colonna già presente
 
+    # Seed configurazioni di default per tutte le 9 sedi se non esistono ancora
+    # I valori sono modificabili dall'operatore via API /api/configurazione/<prod>/<sede>
+    _sedi_default = [
+        ('urbani',  'pievepelago', 400.0, 0.8,  16.0, 70.0),  # montagna: target più basso, umidità alta
+        ('urbani',  'vignola',     500.0, 1.0,  18.0, 65.0),
+        ('urbani',  'carpi',       600.0, 1.2,  18.0, 65.0),  # pianura: volume maggiore
+        ('rossi',   'pievepelago', 350.0, 0.8,  17.0, 68.0),  # rossi: target leggermente più caldo
+        ('rossi',   'vignola',     450.0, 1.0,  19.0, 62.0),
+        ('rossi',   'carpi',       550.0, 1.2,  19.0, 62.0),
+        ('bianchi', 'pievepelago', 380.0, 0.8,  14.0, 72.0),  # bianchi: target più freddo, più umido
+        ('bianchi', 'vignola',     480.0, 1.0,  15.0, 70.0),
+        ('bianchi', 'carpi',       580.0, 1.2,  15.0, 70.0),
+    ]
+    for prod, sede, vol, isol, t_temp, t_umid in _sedi_default:
+        esiste = ConfigurazioneSede.query.filter_by(produttore=prod, sede=sede).first()
+        if not esiste:
+            db.session.add(ConfigurazioneSede(
+                produttore=prod, sede=sede,
+                volume_m3=vol, isolamento=isol,
+                target_temp=t_temp, target_umid=t_umid
+            ))
+    db.session.commit()
+
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -233,6 +284,31 @@ def produttori_autorizzati():
     if current_user.ruolo == 'admin':
         return ['urbani', 'rossi', 'bianchi']
     return [current_user.ruolo]
+
+
+def get_config_sede(produttore: str, sede: str) -> ConfigurazioneSede:
+    """
+    Restituisce la configurazione fisica di una sede.
+    Usato dalle funzioni ML per passare volume, isolamento e target
+    ai modelli della collega senza doverli passare manualmente ogni volta.
+
+    Uso tipico in on_message:
+        cfg = get_config_sede(produttore, sede)
+        minuti_clima, minuti_umid = prevedi_minuti_sistemi(
+            temp_est, temp_int, umid_est, umid_int,
+            cfg.target_temp, cfg.target_umid,
+            cfg.isolamento, cfg.volume_m3
+        )
+    """
+    cfg = ConfigurazioneSede.query.filter_by(produttore=produttore, sede=sede).first()
+    if cfg is None:
+        # Fallback con valori di default se la sede non è ancora configurata
+        cfg = ConfigurazioneSede(
+            produttore=produttore, sede=sede,
+            volume_m3=500.0, isolamento=1.0,
+            target_temp=18.0, target_umid=65.0
+        )
+    return cfg
 
 
 # ── MQTT ──────────────────────────────────────────────────────────────────────
@@ -332,29 +408,44 @@ def ml_trend_vino(storico_temp_vino: list[float], soglia_critica=24.0,
     return {'pendenza': round(pendenza, 4), 'minuti_alla_soglia': round(minuti, 1) if minuti else None}
 
 
-def ml_timer_impianti(temp_int, umid_int, temp_est, temp_target=18.0, umid_target=65.0):
+def ml_timer_impianti(temp_int, umid_int, temp_est, umid_est=None,
+                       temp_target=18.0, umid_target=65.0,
+                       isolamento=1.0, volume=500.0):
     """
-    [STUB] Regressore multi-output: calcola timer AC e umidificatore.
-    In produzione: sostituire con il modello .pkl di Alessia.
-    Attualmente usa una formula proporzionale semplice.
+    [STUB → PRONTO PER IL MODELLO REALE]
+    Firma aggiornata per corrispondere esattamente a prevedi_minuti_sistemi():
+        prevedi_minuti_sistemi(temp_est, temp_int, umid_est, umid_int,
+                               target_temp, target_umid, isolamento, volume)
+
+    Quando la collega porta regressore_sistemi_multi.pkl, sostituire il corpo
+    con la chiamata diretta a prevedi_minuti_sistemi().
 
     Ritorna: {'timer_ac_minuti': float, 'timer_umid_minuti': float}
     """
+    # ── Usa il modello reale quando disponibile ──────────────────────────────
     if _modello_timer_ac is not None and ML_DISPONIBILE.get('numpy'):
-        # ── Usa il modello reale quando disponibile ──────────────────────────
         import numpy as np
-        X = np.array([[temp_int, umid_int, temp_est, temp_target, umid_target]])
+        # Ordine feature ESATTO richiesto da prevedi_minuti_sistemi():
+        # [temp_est, temp_int, umid_est, umid_int, target_temp, target_umid, isolamento, volume]
+        X = np.array([[
+            temp_est or 0,
+            temp_int or 0,
+            umid_est or 0,
+            umid_int or 0,
+            temp_target,
+            umid_target,
+            isolamento,
+            volume
+        ]])
         pred = _modello_timer_ac.predict(X)[0]
         return {'timer_ac_minuti': round(float(pred[0]), 1),
                 'timer_umid_minuti': round(float(pred[1]), 1)}
 
-    # ── Fallback proporzionale (stub) ────────────────────────────────────────
+    # ── Fallback proporzionale (stub attivo finché il .pkl non arriva) ───────
     delta_temp = (temp_int or 0) - temp_target
     delta_umid = (umid_int or 0) - umid_target
-
-    timer_ac   = max(0.0, round(delta_temp * 3.0, 1))   # 3 min per ogni °C oltre target
+    timer_ac   = max(0.0, round(delta_temp * 3.0, 1))
     timer_umid = max(0.0, round(abs(delta_umid) * 1.5, 1)) if delta_umid > 5 else 0.0
-
     return {'timer_ac_minuti': timer_ac, 'timer_umid_minuti': timer_umid}
 
 
@@ -500,7 +591,16 @@ def on_message(client, userdata, msg):
             ris_ambiente = ml_verifica_ambiente(temp_int, umid_int, valore_co2)
 
             # ── ML 4: Timer impianti (regressore multi-output) ────────────────
-            ris_timer = ml_timer_impianti(temp_int, umid_int, temp_est)
+            # Recupera configurazione sede per passare volume, isolamento e target
+            cfg = get_config_sede(produttore, sede)
+            ris_timer = ml_timer_impianti(
+                temp_int, umid_int, temp_est,
+                umid_est=payload.get('umid_est'),
+                temp_target=cfg.target_temp,
+                umid_target=cfg.target_umid,
+                isolamento=cfg.isolamento,
+                volume=cfg.volume_m3
+            )
 
             # Allarmi tradizionali
             if temp_vino_calc and temp_vino_calc > 24.0:
@@ -847,6 +947,78 @@ def api_eventi_m2m():
         'valore': float(e.valore) if e.valore is not None else None,
         'messaggio': e.messaggio,
     } for e in eventi])
+
+
+@app.route('/api/configurazione')
+@login_required
+def api_config_lista():
+    """Lista configurazioni sedi autorizzate."""
+    autorizzati = produttori_autorizzati()
+    configs = ConfigurazioneSede.query.filter(
+        ConfigurazioneSede.produttore.in_(autorizzati)
+    ).order_by(ConfigurazioneSede.produttore, ConfigurazioneSede.sede).all()
+    return jsonify([{
+        'produttore':      c.produttore,
+        'sede':            c.sede,
+        'volume_m3':       c.volume_m3,
+        'isolamento':      c.isolamento,
+        'target_temp':     c.target_temp,
+        'target_umid':     c.target_umid,
+        'soglia_co2':      c.soglia_co2,
+        'soglia_temp_alta':  c.soglia_temp_alta,
+        'soglia_temp_bassa': c.soglia_temp_bassa,
+        'soglia_umid_alta':  c.soglia_umid_alta,
+        'note':            c.note,
+        'aggiornato_il':   c.aggiornato_il.isoformat() if c.aggiornato_il else None,
+    } for c in configs])
+
+
+@app.route('/api/configurazione/<produttore>/<sede>', methods=['GET', 'PATCH'])
+@login_required
+def api_config_sede(produttore, sede):
+    """
+    GET   → legge configurazione di una sede specifica.
+    PATCH → aggiorna uno o più campi (solo i campi presenti nel body vengono modificati).
+
+    Esempio body PATCH:
+        { "target_temp": 16.0, "volume_m3": 450, "note": "Botti da 500L, pareti in tufo" }
+    """
+    autorizzati = produttori_autorizzati()
+    if produttore not in autorizzati:
+        return jsonify({'error': 'Non autorizzato'}), 403
+
+    cfg = ConfigurazioneSede.query.filter_by(produttore=produttore, sede=sede).first()
+    if not cfg:
+        return jsonify({'error': 'Sede non trovata'}), 404
+
+    if request.method == 'PATCH':
+        body = request.get_json() or {}
+        campi_modificabili = [
+            'volume_m3', 'isolamento', 'target_temp', 'target_umid',
+            'soglia_co2', 'soglia_temp_alta', 'soglia_temp_bassa',
+            'soglia_umid_alta', 'note'
+        ]
+        for campo in campi_modificabili:
+            if campo in body:
+                setattr(cfg, campo, body[campo])
+        cfg.aggiornato_il = datetime.utcnow()
+        db.session.commit()
+        print(f"⚙️  Configurazione {produttore}/{sede} aggiornata: {body}")
+
+    return jsonify({
+        'produttore':      cfg.produttore,
+        'sede':            cfg.sede,
+        'volume_m3':       cfg.volume_m3,
+        'isolamento':      cfg.isolamento,
+        'target_temp':     cfg.target_temp,
+        'target_umid':     cfg.target_umid,
+        'soglia_co2':      cfg.soglia_co2,
+        'soglia_temp_alta':  cfg.soglia_temp_alta,
+        'soglia_temp_bassa': cfg.soglia_temp_bassa,
+        'soglia_umid_alta':  cfg.soglia_umid_alta,
+        'note':            cfg.note,
+        'aggiornato_il':   cfg.aggiornato_il.isoformat() if cfg.aggiornato_il else None,
+    })
 
 
 @app.route('/login', methods=['GET', 'POST'])
