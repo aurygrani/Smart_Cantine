@@ -47,6 +47,33 @@ _modello_efficienza   = carica_modello('modello_efficienza.pkl')
 _modello_timer_ac     = carica_modello('modello_timer_multioutput.pkl')
 _modello_anomalia_int = carica_modello('modello_anomalia_interna.pkl')
 
+# ── IMPORTA I MODULI ML DELLA COLLEGA ────────────────────────────────────────
+# I file devono essere nella stessa cartella di server.py:
+#   modelli_ml.py, logica_business.py, produttori.py, config_sedi.py
+# Se mancano il server funziona ugualmente (graceful degradation).
+try:
+    from logica_business import (
+        GestoreAllarmiIntelligente,
+        verifica_ambiente        as lb_verifica_ambiente,
+        avvia_cicli_smart_sistemi,
+        recupera_profilo_produttore,
+        recupera_dati_sede,
+    )
+    from modelli_ml import (
+        calcola_vino_virtuale,
+        rileva_anomalie_sensori,
+        ml_prevedi_minuti_rimasti_finestra,
+        prevedi_minuti_sistemi,
+        prevedi_fascia_sede,
+    )
+    _MODULI_ML_DISPONIBILI = True
+    _gestore = GestoreAllarmiIntelligente()
+    print("✅ Moduli ML della collega caricati correttamente")
+except ImportError as e:
+    _MODULI_ML_DISPONIBILI = False
+    _gestore = None
+    print(f"⚠️  Moduli ML non disponibili: {e} — il server funziona in modalità stub")
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chiave-segreta-urbani'
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -458,6 +485,27 @@ def ml_fascia_efficienza(temp_int_media, temp_est_media,
 
     Ritorna: {'fascia': 'A'|'B'|'C', 'colore': 'verde'|'giallo'|'rosso', 'score': float}
     """
+    # Usa prevedi_fascia_sede() della collega se disponibile
+    # Firma: prevedi_fascia_sede(temp_est, umidita_est, target_int, isolamento, volume)
+    if _MODULI_ML_DISPONIBILI:
+        try:
+            profilo = recupera_profilo_produttore(produttore) or {}
+            target_int = profilo.get('target_ambiente_temp', 18.0)
+            # temp_est_media usata come proxy di umidita_est (non disponibile come media)
+            # La collega potrà affinare quando avrà la media umidità esterna
+            fascia_raw = prevedi_fascia_sede(
+                temp_est_media,
+                temp_est_media,   # placeholder umidita_est
+                target_int,
+                valore_isolamento,
+                volume_cantina
+            )
+            fascia = str(fascia_raw)
+            colore = 'verde' if fascia == 'A' else ('giallo' if fascia == 'B' else 'rosso')
+            return {'fascia': fascia, 'colore': colore, 'score': 0.5}
+        except Exception as e:
+            print(f"⚠️  prevedi_fascia_sede errore: {e}")
+
     if _modello_efficienza is not None and ML_DISPONIBILE.get('numpy'):
         import numpy as np
         delta = abs(temp_int_media - temp_est_media)
@@ -487,6 +535,10 @@ def ml_fascia_efficienza(temp_int_media, temp_est_media,
 # { 'urbani/pievepelago': [22.1, 22.3, 22.5, ...] }
 _storico_vino: dict[str, list[float]] = {}
 MAX_STORICO_TREND = 30  # ultimi 30 campionamenti (~5 minuti con ciclo 10s)
+
+# Contatore cicli per ogni sede — usato per eseguire il GestoreAllarmiIntelligente
+# solo ogni N cicli (evita di appesantire il flusso MQTT con query DB ad ogni messaggio)
+_contatore_cicli: dict[str, int] = {}
 
 
 def on_connect(client, userdata, flags, rc):
@@ -556,76 +608,121 @@ def on_message(client, userdata, msg):
             valore_co2 = payload.get('co2', 0)
             chiave_sede = f"{produttore}/{sede}"
 
-            # ── ML 1: Temperatura vino con smorzamento fisico ─────────────────
-            # Recupera l'ultimo valore di temp_vino dal buffer storico
-            storico = _storico_vino.setdefault(chiave_sede, [])
-            temp_vino_precedente = storico[-1] if storico else None
-            temp_vino_smorzata = ml_temp_vino_smorzata(temp_aria, temp_vino_precedente)
-
-            # Mantieni compatibilità con il campo originale
-            temp_vino_calc = temp_vino_smorzata
-
-            # ── ML 2: Trend temperatura vino (regressione lineare) ────────────
-            if temp_vino_smorzata is not None:
-                storico.append(temp_vino_smorzata)
-                if len(storico) > MAX_STORICO_TREND:
-                    storico.pop(0)
-
-            trend = ml_trend_vino(storico) if len(storico) >= 3 else {'pendenza': None, 'minuti_alla_soglia': None}
-
-            # Allarme preavviso: meno di 30 minuti alla soglia critica
-            if (trend['minuti_alla_soglia'] is not None and
-                    trend['minuti_alla_soglia'] < 30 and
-                    trend['pendenza'] > 0):
-                print(f"⏱️  PREAVVISO {chiave_sede}: vino raggiungerà 24°C in "
-                      f"{trend['minuti_alla_soglia']:.0f} minuti")
-                allarmi_recenti.append({
-                    "tipo": "PREAVVISO_VINO",
-                    "produttore": produttore,
-                    "sede": sede,
-                    "valore": trend['minuti_alla_soglia'],
-                    "ts": datetime.utcnow().isoformat()
-                })
-
-            # ── ML 3: Verifica ambiente ───────────────────────────────────────
-            ris_ambiente = ml_verifica_ambiente(temp_int, umid_int, valore_co2)
-
-            # ── ML 4: Timer impianti (regressore multi-output) ────────────────
-            # Recupera configurazione sede per passare volume, isolamento e target
-            cfg = get_config_sede(produttore, sede)
-            ris_timer = ml_timer_impianti(
-                temp_int, umid_int, temp_est,
-                umid_est=payload.get('umid_est'),
-                temp_target=cfg.target_temp,
-                umid_target=cfg.target_umid,
-                isolamento=cfg.isolamento,
-                volume=cfg.volume_m3
-            )
-
-            # Allarmi tradizionali
-            if temp_vino_calc and temp_vino_calc > 24.0:
-                print(f"🚨 Vino surriscaldato a {sede} ({produttore}) → {temp_vino_calc:.2f}°C")
-                allarmi_recenti.append({
-                    "tipo": "VINO_CALDO",
-                    "produttore": produttore,
-                    "sede": sede,
-                    "valore": temp_vino_calc,
-                    "ts": datetime.utcnow().isoformat()
-                })
-
-            allarme_attivo = valore_co2 > 1000
-            if allarme_attivo:
-                allarmi_recenti.append({
-                    "tipo": "CO2_ALTA",
-                    "produttore": produttore,
-                    "sede": sede,
-                    "valore": valore_co2,
-                    "ts": datetime.utcnow().isoformat()
-                })
-
-            # ── ML 5: Risultato verifica ambiente → RisultatoML ───────────────
+            # ── BLOCCO ML + SALVATAGGIO DB (tutto dentro app_context) ─────────
             with app.app_context():
-                # Salva dato sensore con campi ML
+
+                # ML 1: Temperatura vino con smorzamento fisico
+                storico = _storico_vino.setdefault(chiave_sede, [])
+                temp_vino_precedente = storico[-1] if storico else None
+
+                if _MODULI_ML_DISPONIBILI:
+                    temp_vino_smorzata = calcola_vino_virtuale(temp_aria, temp_vino_precedente, alfa=0.02)
+                else:
+                    temp_vino_smorzata = ml_temp_vino_smorzata(temp_aria, temp_vino_precedente)
+
+                temp_vino_calc = temp_vino_smorzata
+
+                # ML 2: Trend temperatura vino
+                if temp_vino_smorzata is not None:
+                    storico.append(temp_vino_smorzata)
+                    if len(storico) > MAX_STORICO_TREND:
+                        storico.pop(0)
+
+                if _MODULI_ML_DISPONIBILI and len(storico) >= 4:
+                    minuti_trascorsi_storico = [i * (10 / 60.0) for i in range(len(storico))]
+                    profilo_trend = recupera_profilo_produttore(produttore) or {}
+                    target_vino = profilo_trend.get('target_vino_temp', 18.0)
+                    tolleranza = profilo_trend.get('tolleranza_vino_temp', 1.5)
+                    minuti_rimasti = ml_prevedi_minuti_rimasti_finestra(
+                        minuti_trascorsi_storico, storico,
+                        target_vino, tolleranza, finestra=5
+                    )
+                    trend = {
+                        'pendenza': None,
+                        'minuti_alla_soglia': float(minuti_rimasti) if minuti_rimasti is not None else None
+                    }
+                else:
+                    trend = ml_trend_vino(storico) if len(storico) >= 3 else {'pendenza': None,
+                                                                              'minuti_alla_soglia': None}
+
+                if (trend['minuti_alla_soglia'] is not None and
+                        trend['minuti_alla_soglia'] < 30 and
+                        trend['minuti_alla_soglia'] >= 0):
+                    print(f"⏱️  PREAVVISO {chiave_sede}: vino raggiungerà soglia in "
+                          f"{trend['minuti_alla_soglia']:.0f} minuti")
+                    allarmi_recenti.append({
+                        "tipo": "PREAVVISO_VINO",
+                        "produttore": produttore,
+                        "sede": sede,
+                        "valore": trend['minuti_alla_soglia'],
+                        "ts": datetime.utcnow().isoformat()
+                    })
+
+                # ML 3: Verifica ambiente
+                if _MODULI_ML_DISPONIBILI:
+                    profilo_amb = recupera_profilo_produttore(produttore) or {}
+                    comandi_ambiente = lb_verifica_ambiente(
+                        temp_int or 0, umid_int or 0,
+                        target_temp=profilo_amb.get('target_ambiente_temp', 18.0),
+                        target_umidita=profilo_amb.get('target_ambiente_umid', 65.0),
+                        tolleranza_t=profilo_amb.get('tolleranza_temp_ambiente', 2.0),
+                        tolleranza_u=profilo_amb.get('tolleranza_umid_ambiente', 5.0)
+                    )
+                    ha_problemi = any(v != 'OFF' for v in comandi_ambiente.values())
+                    ris_ambiente = {
+                        'esito': 'warn' if ha_problemi else 'ok',
+                        'dettaglio': f"Clima: {comandi_ambiente['climatizzatore']} | Umid: {comandi_ambiente['sistema_umidita']}",
+                        'modello': 'verifica_ambiente',
+                        'comandi': comandi_ambiente
+                    }
+                else:
+                    ris_ambiente = ml_verifica_ambiente(temp_int, umid_int, valore_co2)
+
+                # ML 4: Timer impianti
+                cfg = get_config_sede(produttore, sede)
+                if _MODULI_ML_DISPONIBILI:
+                    profilo_timer = recupera_profilo_produttore(produttore) or {}
+                    config_fisica = recupera_dati_sede(produttore, sede)
+                    comandi_motori = avvia_cicli_smart_sistemi(
+                        temp_est or 0, temp_int or 0,
+                        payload.get('umid_est') or 0, umid_int or 0,
+                        target_temp=profilo_timer.get('target_ambiente_temp', cfg.target_temp),
+                        target_umid=profilo_timer.get('target_ambiente_umid', cfg.target_umid),
+                        isolamento=config_fisica.get('isolamento', cfg.isolamento),
+                        volume=config_fisica.get('volume', cfg.volume_m3)
+                    )
+                    ris_timer = {
+                        'timer_ac_minuti': comandi_motori['climatizzatore']['timer_minuti'],
+                        'timer_umid_minuti': comandi_motori['sistema_umidita']['timer_minuti'],
+                    }
+                else:
+                    ris_timer = ml_timer_impianti(
+                        temp_int, umid_int, temp_est,
+                        umid_est=payload.get('umid_est'),
+                        temp_target=cfg.target_temp,
+                        umid_target=cfg.target_umid,
+                        isolamento=cfg.isolamento,
+                        volume=cfg.volume_m3
+                    )
+
+                # Allarmi tradizionali
+                if temp_vino_calc and temp_vino_calc > 24.0:
+                    print(f"🚨 Vino surriscaldato a {sede} ({produttore}) → {temp_vino_calc:.2f}°C")
+                    allarmi_recenti.append({
+                        "tipo": "VINO_CALDO", "produttore": produttore,
+                        "sede": sede, "valore": temp_vino_calc,
+                        "ts": datetime.utcnow().isoformat()
+                    })
+
+                allarme_attivo = valore_co2 > 1000
+                if allarme_attivo:
+                    allarmi_recenti.append({
+                        "tipo": "CO2_ALTA", "produttore": produttore,
+                        "sede": sede, "valore": valore_co2,
+                        "ts": datetime.utcnow().isoformat()
+                    })
+
+                # Salva nel DB
                 db.session.add(DatoSensore(
                     produttore=produttore, sede=sede,
                     temp_int=temp_int, temp_est=temp_est,
@@ -639,7 +736,6 @@ def on_message(client, userdata, msg):
                     trend_vino_pendenza=trend.get('pendenza'),
                 ))
 
-                # Salva risultato verifica ambiente se c'è qualcosa da segnalare
                 if ris_ambiente and ris_ambiente['esito'] != 'ok':
                     db.session.add(RisultatoML(
                         produttore=produttore, sede=sede,
@@ -650,6 +746,47 @@ def on_message(client, userdata, msg):
                     ))
 
                 db.session.commit()
+
+                # ML 6: GestoreAllarmiIntelligente ogni 5 cicli
+                if _MODULI_ML_DISPONIBILI and _gestore is not None:
+                    try:
+                        _contatore_cicli[chiave_sede] = _contatore_cicli.get(chiave_sede, 0) + 1
+                        if _contatore_cicli[chiave_sede] % 5 == 0:
+                            rows = db.session.execute(db.text(
+                                "SELECT id, timestamp, produttore, sede, temp_int, temp_est, "
+                                "umid_int, umid_est, co2, allarme_co2, temp_vino_smorzata "
+                                "FROM dato_sensore ORDER BY id DESC LIMIT 30"
+                            )).fetchall()
+                            if rows:
+                                report = _gestore.analizza(list(reversed(rows)))
+                                for anomalia in report.get('anomalie', []):
+                                    db.session.add(RisultatoML(
+                                        produttore=produttore, sede=sede,
+                                        modello='anomalia_sensore_zscore',
+                                        esito='danger', valore=None,
+                                        dettaglio=str(anomalia)
+                                    ))
+                                for prod_k, sedi_allarme in report.get('stato_sedi', {}).items():
+                                    for sede_k, problemi in sedi_allarme.items():
+                                        for problema in problemi:
+                                            db.session.add(RisultatoML(
+                                                produttore=prod_k, sede=sede_k,
+                                                modello='conformita_sede',
+                                                esito='warn', valore=None,
+                                                dettaglio=str(problema)
+                                            ))
+                                qualita = report.get('qualita_vino', '')
+                                if qualita and ('ALLARME' in str(qualita) or 'PREAVVISO' in str(qualita)):
+                                    allarmi_recenti.append({
+                                        "tipo": "QUALITA_VINO_ML",
+                                        "produttore": produttore, "sede": sede,
+                                        "valore": 0, "messaggio": str(qualita),
+                                        "ts": datetime.utcnow().isoformat()
+                                    })
+                                db.session.commit()
+                                print(f"🤖 [ML] {chiave_sede} → {report.get('stato_globale', '?')}")
+                    except Exception as e_ml:
+                        print(f"⚠️  Gestore ML errore: {e_ml}")
 
         # ── 2. [GEO M2M] Sensore esterno sospetto: cantine/zona/<zona>/sensore_sospetto
         elif len(parti) >= 4 and parti[1] == 'zona' and parti[3] == 'sensore_sospetto':
