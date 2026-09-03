@@ -340,7 +340,8 @@
             {% if dati_sedi %}
             <div class="sedi-grid">
                 {% for item in dati_sedi %}
-                <a class="sede-card" href="/sede/{{ item.sede }}" data-prod="{{ item.produttore }}">
+                <!-- CAMBIA QUESTA RIGA: -->
+                <a class="sede-card" href="/sede/{{ item.sede }}?prod={{ item.produttore }}" data-prod="{{ item.produttore }}">
                     <div class="sede-card-header">
                         <span class="sede-nome">{{ item.sede | capitalize }}</span>
                         <span class="produttore-badge">{{ item.produttore }}</span>

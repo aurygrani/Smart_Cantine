@@ -2,10 +2,11 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from collections import deque
-import os, json, math
+import os, json, math, time, random
 import paho.mqtt.client as mqtt
 
 # ── ML: importa i modelli quando disponibili ──────────────────────────────────
@@ -83,6 +84,33 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+# ── GESTIONE FUSO ORARIO ──────────────────────────────────────────────────────
+# Tutti i timestamp nel DB sono salvati in UTC (datetime.utcnow(), naive).
+# Per la visualizzazione li convertiamo esplicitamente al fuso italiano, e per
+# le API JSON serializziamo sempre con l'offset UTC esplicito (+00:00) così il
+# browser li interpreta correttamente indipendentemente dal proprio fuso.
+FUSO_LOCALE = ZoneInfo("Europe/Rome")
+
+
+def iso_utc(dt):
+    """Serializza un datetime naive (salvato in UTC) in ISO-8601 con offset
+    esplicito, es. '2026-09-03T10:15:30+00:00', invece di una stringa 'nuda'
+    che il client non può distinguere da un orario già locale."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc).isoformat()
+
+
+def ora_locale(dt, fmt='%d/%m %H:%M:%S'):
+    """Converte un datetime naive UTC nel fuso orario italiano (gestisce
+    automaticamente ora solare/legale) per la visualizzazione lato server."""
+    if dt is None:
+        return '—'
+    return dt.replace(tzinfo=timezone.utc).astimezone(FUSO_LOCALE).strftime(fmt)
+
+
+app.jinja_env.filters['ora_locale'] = ora_locale
+
 # Buffer allarmi recenti (in memoria) — max 50, usato per il polling sonoro del frontend
 allarmi_recenti = deque(maxlen=50)
 
@@ -135,6 +163,115 @@ def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2):
     comando = f"TEMP={led_temp};UMID={led_umid};CO2={led_co2};BUZZER={buzzer}"
     mqtt_client.publish("cantine/urbani/pievepelago/comandi", comando, qos=1)
     print(f"   📡 Comando → ESP32: {comando}")
+
+
+def calcola_stato_attuatori(temp_int, umid_int, co2, cfg=None):
+    """
+    Calcola quali "sistemi" risultano attivi secondo le soglie della sede,
+    per la rappresentazione visiva in dashboard (grafico "Sistemi attivi").
+
+    A differenza di calcola_e_invia_comandi() — che invia il comando reale
+    via MQTT SOLO al twin fisico urbani/pievepelago, nel formato a 3 LED
+    che il firmware ESP32 si aspetta (TEMP;UMID;CO2;BUZZER) — questa funzione
+    viene eseguita per OGNI sede (reale e simulata) e distingue anche il
+    riscaldamento (temperatura troppo bassa), che sull'hardware fisico
+    attuale condivide il LED blu con l'allarme umidità (vedi commento sopra)
+    ma che in dashboard mostriamo come indicatore separato, più leggibile
+    per chi guarda il progetto.
+
+    Ritorna un dizionario con lo stato (0/1) di ogni sistema + le soglie usate.
+    """
+    soglia_temp_alta  = cfg.soglia_temp_alta  if cfg and cfg.soglia_temp_alta  is not None else SOGLIA_TEMP_ALTA
+    soglia_temp_bassa = cfg.soglia_temp_bassa if cfg and cfg.soglia_temp_bassa is not None else SOGLIA_TEMP_BASSA
+    soglia_umid_alta  = cfg.soglia_umid_alta  if cfg and cfg.soglia_umid_alta  is not None else SOGLIA_UMID_ALTA
+    soglia_co2        = cfg.soglia_co2        if cfg and cfg.soglia_co2        is not None else SOGLIA_CO2_ALTA
+
+    ac            = 1 if (temp_int is not None and temp_int > soglia_temp_alta)  else 0
+    riscaldamento = 1 if (temp_int is not None and temp_int < soglia_temp_bassa) else 0
+    umidita       = 1 if (umid_int is not None and umid_int > soglia_umid_alta)  else 0
+    co2_alto      = 1 if (co2 is not None and co2 > soglia_co2) else 0
+    buzzer        = 1 if (co2_alto or (temp_int is not None and temp_int > 30.0)) else 0
+
+    return {
+        'ac': ac,
+        'riscaldamento': riscaldamento,
+        'umidita': umidita,
+        'co2': co2_alto,
+        'buzzer': buzzer,
+        'soglie': {
+            'temp_alta':  soglia_temp_alta,
+            'temp_bassa': soglia_temp_bassa,
+            'umid_alta':  soglia_umid_alta,
+            'co2':        soglia_co2,
+        }
+    }
+
+
+def calcola_stato_sede(temp_int, umid_int, co2, minuti_alla_soglia, trend_pendenza,
+                        cfg=None, fascia_efficienza=None):
+    """
+    Punteggio sintetico (0-100) dello "stato di salute" della sede, per il
+    grafico "Stato della sede" in dashboard. Combina i principali segnali
+    fisici (temperatura/umidità vs target, CO2 vs soglia) con gli output dei
+    modelli ML (trend previsto della temperatura del vino, fascia di
+    efficienza energetica), pesati per importanza.
+
+    Ritorna punteggio, etichetta (Buona/Media/Cattiva), colore e il dettaglio
+    dei singoli fattori (per mostrare le barre di scomposizione in UI).
+    """
+    target_temp = cfg.target_temp if cfg and cfg.target_temp is not None else 18.0
+    target_umid = cfg.target_umid if cfg and cfg.target_umid is not None else 65.0
+    soglia_co2  = cfg.soglia_co2  if cfg and cfg.soglia_co2  is not None else SOGLIA_CO2_ALTA
+
+    fattori = []
+
+    # 1. Temperatura interna vs target sede (max 30 punti, -6 per grado di scarto)
+    if temp_int is not None:
+        punti_t = max(0.0, 30.0 - abs(temp_int - target_temp) * 6.0)
+    else:
+        punti_t = 15.0  # dato mancante → punteggio neutro, non penalizzante
+    fattori.append({'nome': 'Temperatura', 'punti': round(punti_t, 1), 'max': 30})
+
+    # 2. Umidità interna vs target sede (max 20 punti, -1 per punto % di scarto)
+    if umid_int is not None:
+        punti_u = max(0.0, 20.0 - abs(umid_int - target_umid) * 1.0)
+    else:
+        punti_u = 10.0
+    fattori.append({'nome': 'Umidità', 'punti': round(punti_u, 1), 'max': 20})
+
+    # 3. CO2 vs soglia sede (max 25 punti; sotto metà soglia = punteggio pieno,
+    #    sopra soglia crolla rapidamente)
+    if co2 is not None and soglia_co2:
+        rapporto = co2 / soglia_co2
+        punti_co2 = max(0.0, 25.0 - max(0.0, rapporto - 0.5) * 40.0)
+    else:
+        punti_co2 = 12.5
+    fattori.append({'nome': 'CO₂', 'punti': round(punti_co2, 1), 'max': 25})
+
+    # 4. Trend vino / minuti alla soglia critica, dal modello ML (max 15 punti;
+    #    60+ minuti di margine = punteggio pieno)
+    if minuti_alla_soglia is not None:
+        punti_vino = min(15.0, max(0.0, minuti_alla_soglia) / 4.0)
+    elif trend_pendenza is not None and trend_pendenza <= 0:
+        punti_vino = 15.0  # temperatura del vino stabile o in calo: nessun rischio imminente
+    else:
+        punti_vino = 8.0   # nessun dato ML disponibile → punteggio neutro
+    fattori.append({'nome': 'Trend vino (ML)', 'punti': round(punti_vino, 1), 'max': 15})
+
+    # 5. Efficienza energetica stimata dal modello ML (max 10 punti)
+    punti_eff = {'A': 10.0, 'B': 6.0, 'C': 2.0}.get(fascia_efficienza, 5.0)
+    fattori.append({'nome': 'Efficienza energetica (ML)', 'punti': round(punti_eff, 1), 'max': 10})
+
+    punteggio = round(min(100.0, max(0.0, sum(f['punti'] for f in fattori))), 1)
+
+    if punteggio >= 75:
+        stato, colore = 'Buona', 'verde'
+    elif punteggio >= 45:
+        stato, colore = 'Media', 'giallo'
+    else:
+        stato, colore = 'Cattiva', 'rosso'
+
+    return {'punteggio': punteggio, 'stato': stato, 'colore': colore, 'fattori': fattori}
 
 
 # ── MODELLI ───────────────────────────────────────────────────────────────────
@@ -308,9 +445,22 @@ with app.app_context():
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
 def produttori_autorizzati():
-    if current_user.ruolo == 'admin':
+    """
+    Ritorna la lista dei produttori che l'utente corrente può vedere.
+
+    NB: il nome del produttore viene sempre normalizzato in minuscolo qui,
+    perché sul lato MQTT (on_message) il produttore viene salvato nel DB
+    forzato in minuscolo (parti[1].lower()). Se il campo `ruolo` dell'utente
+    fosse salvato con una maiuscola diversa (es. "Bianchi" invece di
+    "bianchi") o spazi extra, un confronto case-sensitive tipo
+    `DatoSensore.produttore.in_(['Bianchi'])` non troverebbe MAI le righe
+    salvate come 'bianchi' — sembrerebbe che "i dati non arrivano" quando in
+    realtà arrivano e vengono solo filtrati via silenziosamente.
+    """
+    ruolo_normalizzato = (current_user.ruolo or '').strip().lower()
+    if ruolo_normalizzato == 'admin':
         return ['urbani', 'rossi', 'bianchi']
-    return [current_user.ruolo]
+    return [ruolo_normalizzato]
 
 
 def get_config_sede(produttore: str, sede: str) -> ConfigurazioneSede:
@@ -336,6 +486,18 @@ def get_config_sede(produttore: str, sede: str) -> ConfigurazioneSede:
             target_temp=18.0, target_umid=65.0
         )
     return cfg
+
+
+def recupera_ultima_fascia(produttore: str, sede: str):
+    """Ritorna la lettera 'A'/'B'/'C' dell'ultima fascia di efficienza energetica
+    calcolata per la sede (modello ML di Alessia), oppure None se non è mai
+    stata calcolata — usata da calcola_stato_sede() come uno dei fattori del
+    punteggio "Stato della sede"."""
+    ultima = (FasciaEfficienza.query
+              .filter_by(produttore=produttore, sede=sede)
+              .order_by(FasciaEfficienza.timestamp.desc())
+              .first())
+    return ultima.fascia if ultima else None
 
 
 # ── MQTT ──────────────────────────────────────────────────────────────────────
@@ -536,6 +698,24 @@ def ml_fascia_efficienza(temp_int_media, temp_est_media,
 _storico_vino: dict[str, list[float]] = {}
 MAX_STORICO_TREND = 30  # ultimi 30 campionamenti (~5 minuti con ciclo 10s)
 
+# Ultimo stato calcolato degli attuatori per ogni sede (per la dashboard) —
+# { 'urbani/pievepelago': {'ac':1,'riscaldamento':0,'umidita':0,'co2':1,'buzzer':1, ...} }
+# Calcolato per TUTTE le sedi (reali e simulate), a differenza del comando MQTT
+# che oggi viene inviato solo al twin fisico urbani/pievepelago.
+_stato_attuatori: dict[str, dict] = {}
+
+# Ultimo punteggio "Stato della sede" calcolato (Buona/Media/Cattiva) —
+# { 'urbani/pievepelago': {'punteggio':82.5,'stato':'Buona','colore':'verde','fattori':[...]} }
+_stato_sede: dict[str, dict] = {}
+
+# Tiene traccia di quali sedi hanno l'allarme CO2 già "attivo", per generare
+# l'evento in allarmi_recenti (che fa suonare il beep sul frontend) solo al
+# momento del superamento soglia (fronte di salita) — non ad ogni singola
+# lettura CO2 finché il valore resta alto, altrimenti il beep suonerebbe in
+# continuazione ogni ~5-10s per tutta la durata del picco.
+_stato_allarme_co2: dict[str, bool] = {}
+_stato_allarme_co2_m2m: dict[str, bool] = {}
+
 # Contatore cicli per ogni sede — usato per eseguire il GestoreAllarmiIntelligente
 # solo ogni N cicli (evita di appesantire il flusso MQTT con query DB ad ogni messaggio)
 _contatore_cicli: dict[str, int] = {}
@@ -610,183 +790,225 @@ def on_message(client, userdata, msg):
 
             # ── BLOCCO ML + SALVATAGGIO DB (tutto dentro app_context) ─────────
             with app.app_context():
+                try:
+                    # Piccolo sleep randomico per sfalsare le scritture su SQLite
+                    # ed evitare Database Lock dovuti ai burst del simulatore
+                    if produttore != 'urbani':
+                        time.sleep(random.uniform(0.01, 0.1))
 
-                # ML 1: Temperatura vino con smorzamento fisico
-                storico = _storico_vino.setdefault(chiave_sede, [])
-                temp_vino_precedente = storico[-1] if storico else None
+                    # ML 1: Temperatura vino con smorzamento fisico
+                    storico = _storico_vino.setdefault(chiave_sede, [])
+                    temp_vino_precedente = storico[-1] if storico else None
 
-                if _MODULI_ML_DISPONIBILI:
-                    temp_vino_smorzata = calcola_vino_virtuale(temp_aria, temp_vino_precedente, alfa=0.02)
-                else:
-                    temp_vino_smorzata = ml_temp_vino_smorzata(temp_aria, temp_vino_precedente)
+                    if _MODULI_ML_DISPONIBILI:
+                        temp_vino_smorzata = calcola_vino_virtuale(temp_aria, temp_vino_precedente, alfa=0.02)
+                    else:
+                        temp_vino_smorzata = ml_temp_vino_smorzata(temp_aria, temp_vino_precedente)
 
-                temp_vino_calc = temp_vino_smorzata
+                    temp_vino_calc = temp_vino_smorzata
 
-                # ML 2: Trend temperatura vino
-                if temp_vino_smorzata is not None:
-                    storico.append(temp_vino_smorzata)
-                    if len(storico) > MAX_STORICO_TREND:
-                        storico.pop(0)
+                    # ML 2: Trend temperatura vino
+                    if temp_vino_smorzata is not None:
+                        storico.append(temp_vino_smorzata)
+                        if len(storico) > MAX_STORICO_TREND:
+                            storico.pop(0)
 
-                if _MODULI_ML_DISPONIBILI and len(storico) >= 4:
-                    minuti_trascorsi_storico = [i * (10 / 60.0) for i in range(len(storico))]
-                    profilo_trend = recupera_profilo_produttore(produttore) or {}
-                    target_vino = profilo_trend.get('target_vino_temp', 18.0)
-                    tolleranza = profilo_trend.get('tolleranza_vino_temp', 1.5)
-                    minuti_rimasti = ml_prevedi_minuti_rimasti_finestra(
-                        minuti_trascorsi_storico, storico,
-                        target_vino, tolleranza, finestra=5
-                    )
-                    trend = {
-                        'pendenza': None,
-                        'minuti_alla_soglia': float(minuti_rimasti) if minuti_rimasti is not None else None
+                    if _MODULI_ML_DISPONIBILI and len(storico) >= 4:
+                        minuti_trascorsi_storico = [i * (10 / 60.0) for i in range(len(storico))]
+                        profilo_trend = recupera_profilo_produttore(produttore) or {}
+                        target_vino = profilo_trend.get('target_vino_temp', 18.0)
+                        tolleranza = profilo_trend.get('tolleranza_vino_temp', 1.5)
+                        minuti_rimasti = ml_prevedi_minuti_rimasti_finestra(
+                            minuti_trascorsi_storico, storico,
+                            target_vino, tolleranza, finestra=5
+                        )
+                        trend = {
+                            'pendenza': None,
+                            'minuti_alla_soglia': float(minuti_rimasti) if minuti_rimasti is not None else None
+                        }
+                    else:
+                        trend = ml_trend_vino(storico) if len(storico) >= 3 else {'pendenza': None,
+                                                                                  'minuti_alla_soglia': None}
+
+                    if (trend['minuti_alla_soglia'] is not None and
+                            trend['minuti_alla_soglia'] < 30 and
+                            trend['minuti_alla_soglia'] >= 0):
+                        print(f"⏱️  PREAVVISO {chiave_sede}: vino raggiungerà soglia in "
+                              f"{trend['minuti_alla_soglia']:.0f} minuti")
+                        allarmi_recenti.append({
+                            "tipo": "PREAVVISO_VINO",
+                            "produttore": produttore,
+                            "sede": sede,
+                            "valore": trend['minuti_alla_soglia'],
+                            "ts": iso_utc(datetime.utcnow())
+                        })
+
+                    # ML 3: Verifica ambiente
+                    if _MODULI_ML_DISPONIBILI:
+                        profilo_amb = recupera_profilo_produttore(produttore) or {}
+                        comandi_ambiente = lb_verifica_ambiente(
+                            temp_int or 0, umid_int or 0,
+                            target_temp=profilo_amb.get('target_ambiente_temp', 18.0),
+                            target_umidita=profilo_amb.get('target_ambiente_umid', 65.0),
+                            tolleranza_t=profilo_amb.get('tolleranza_temp_ambiente', 2.0),
+                            tolleranza_u=profilo_amb.get('tolleranza_umid_ambiente', 5.0)
+                        )
+                        ha_problemi = any(v != 'OFF' for v in comandi_ambiente.values())
+                        ris_ambiente = {
+                            'esito': 'warn' if ha_problemi else 'ok',
+                            'dettaglio': f"Clima: {comandi_ambiente['climatizzatore']} | Umid: {comandi_ambiente['sistema_umidita']}",
+                            'modello': 'verifica_ambiente',
+                            'comandi': comandi_ambiente
+                        }
+                    else:
+                        ris_ambiente = ml_verifica_ambiente(temp_int, umid_int, valore_co2)
+
+                    # ML 4: Timer impianti
+                    cfg = get_config_sede(produttore, sede)
+
+                    # ── Stato attuatori per la dashboard ("Sistemi attivi") ──────
+                    # Calcolato per ogni sede (reale o simulata), non solo per il
+                    # twin fisico che riceve realmente il comando MQTT.
+                    _stato_attuatori[chiave_sede] = {
+                        **calcola_stato_attuatori(temp_int, umid_int, valore_co2, cfg),
+                        'timestamp': iso_utc(datetime.utcnow())
                     }
-                else:
-                    trend = ml_trend_vino(storico) if len(storico) >= 3 else {'pendenza': None,
-                                                                              'minuti_alla_soglia': None}
 
-                if (trend['minuti_alla_soglia'] is not None and
-                        trend['minuti_alla_soglia'] < 30 and
-                        trend['minuti_alla_soglia'] >= 0):
-                    print(f"⏱️  PREAVVISO {chiave_sede}: vino raggiungerà soglia in "
-                          f"{trend['minuti_alla_soglia']:.0f} minuti")
-                    allarmi_recenti.append({
-                        "tipo": "PREAVVISO_VINO",
-                        "produttore": produttore,
-                        "sede": sede,
-                        "valore": trend['minuti_alla_soglia'],
-                        "ts": datetime.utcnow().isoformat()
-                    })
-
-                # ML 3: Verifica ambiente
-                if _MODULI_ML_DISPONIBILI:
-                    profilo_amb = recupera_profilo_produttore(produttore) or {}
-                    comandi_ambiente = lb_verifica_ambiente(
-                        temp_int or 0, umid_int or 0,
-                        target_temp=profilo_amb.get('target_ambiente_temp', 18.0),
-                        target_umidita=profilo_amb.get('target_ambiente_umid', 65.0),
-                        tolleranza_t=profilo_amb.get('tolleranza_temp_ambiente', 2.0),
-                        tolleranza_u=profilo_amb.get('tolleranza_umid_ambiente', 5.0)
-                    )
-                    ha_problemi = any(v != 'OFF' for v in comandi_ambiente.values())
-                    ris_ambiente = {
-                        'esito': 'warn' if ha_problemi else 'ok',
-                        'dettaglio': f"Clima: {comandi_ambiente['climatizzatore']} | Umid: {comandi_ambiente['sistema_umidita']}",
-                        'modello': 'verifica_ambiente',
-                        'comandi': comandi_ambiente
-                    }
-                else:
-                    ris_ambiente = ml_verifica_ambiente(temp_int, umid_int, valore_co2)
-
-                # ML 4: Timer impianti
-                cfg = get_config_sede(produttore, sede)
-                if _MODULI_ML_DISPONIBILI:
-                    profilo_timer = recupera_profilo_produttore(produttore) or {}
-                    config_fisica = recupera_dati_sede(produttore, sede)
-                    comandi_motori = avvia_cicli_smart_sistemi(
-                        temp_est or 0, temp_int or 0,
-                        payload.get('umid_est') or 0, umid_int or 0,
-                        target_temp=profilo_timer.get('target_ambiente_temp', cfg.target_temp),
-                        target_umid=profilo_timer.get('target_ambiente_umid', cfg.target_umid),
-                        isolamento=config_fisica.get('isolamento', cfg.isolamento),
-                        volume=config_fisica.get('volume', cfg.volume_m3)
-                    )
-                    ris_timer = {
-                        'timer_ac_minuti': comandi_motori['climatizzatore']['timer_minuti'],
-                        'timer_umid_minuti': comandi_motori['sistema_umidita']['timer_minuti'],
-                    }
-                else:
-                    ris_timer = ml_timer_impianti(
-                        temp_int, umid_int, temp_est,
-                        umid_est=payload.get('umid_est'),
-                        temp_target=cfg.target_temp,
-                        umid_target=cfg.target_umid,
-                        isolamento=cfg.isolamento,
-                        volume=cfg.volume_m3
+                    # ── Stato di salute della sede ("Buona"/"Media"/"Cattiva") ────
+                    # Combina soglie fisiche + output dei modelli ML (trend vino,
+                    # fascia di efficienza energetica) in un punteggio unico.
+                    fascia_ml = recupera_ultima_fascia(produttore, sede)
+                    _stato_sede[chiave_sede] = calcola_stato_sede(
+                        temp_int, umid_int, valore_co2,
+                        trend.get('minuti_alla_soglia'), trend.get('pendenza'),
+                        cfg=cfg, fascia_efficienza=fascia_ml
                     )
 
-                # Allarmi tradizionali
-                if temp_vino_calc and temp_vino_calc > 24.0:
-                    print(f"🚨 Vino surriscaldato a {sede} ({produttore}) → {temp_vino_calc:.2f}°C")
-                    allarmi_recenti.append({
-                        "tipo": "VINO_CALDO", "produttore": produttore,
-                        "sede": sede, "valore": temp_vino_calc,
-                        "ts": datetime.utcnow().isoformat()
-                    })
+                    if _MODULI_ML_DISPONIBILI:
+                        profilo_timer = recupera_profilo_produttore(produttore) or {}
+                        config_fisica = recupera_dati_sede(produttore, sede)
+                        comandi_motori = avvia_cicli_smart_sistemi(
+                            temp_est or 0, temp_int or 0,
+                            payload.get('umid_est') or 0, umid_int or 0,
+                            target_temp=profilo_timer.get('target_ambiente_temp', cfg.target_temp),
+                            target_umid=profilo_timer.get('target_ambiente_umid', cfg.target_umid),
+                            isolamento=config_fisica.get('isolamento', cfg.isolamento),
+                            volume=config_fisica.get('volume', cfg.volume_m3)
+                        )
+                        ris_timer = {
+                            'timer_ac_minuti': comandi_motori['climatizzatore']['timer_minuti'],
+                            'timer_umid_minuti': comandi_motori['sistema_umidita']['timer_minuti'],
+                        }
+                    else:
+                        ris_timer = ml_timer_impianti(
+                            temp_int, umid_int, temp_est,
+                            umid_est=payload.get('umid_est'),
+                            temp_target=cfg.target_temp,
+                            umid_target=cfg.target_umid,
+                            isolamento=cfg.isolamento,
+                            volume=cfg.volume_m3
+                        )
 
-                allarme_attivo = valore_co2 > 1000
-                if allarme_attivo:
-                    allarmi_recenti.append({
-                        "tipo": "CO2_ALTA", "produttore": produttore,
-                        "sede": sede, "valore": valore_co2,
-                        "ts": datetime.utcnow().isoformat()
-                    })
+                    # Allarmi tradizionali
+                    if temp_vino_calc and temp_vino_calc > 24.0:
+                        print(f"🚨 Vino surriscaldato a {sede} ({produttore}) → {temp_vino_calc:.2f}°C")
+                        allarmi_recenti.append({
+                            "tipo": "VINO_CALDO", "produttore": produttore,
+                            "sede": sede, "valore": temp_vino_calc,
+                            "ts": iso_utc(datetime.utcnow())
+                        })
 
-                # Salva nel DB
-                db.session.add(DatoSensore(
-                    produttore=produttore, sede=sede,
-                    temp_int=temp_int, temp_est=temp_est,
-                    umid_int=umid_int, umid_est=payload.get('umid_est'),
-                    co2=valore_co2, allarme_co2=allarme_attivo,
-                    temp_vino_proiettata=temp_vino_calc,
-                    temp_vino_smorzata=temp_vino_smorzata,
-                    timer_ac_minuti=ris_timer.get('timer_ac_minuti'),
-                    timer_umid_minuti=ris_timer.get('timer_umid_minuti'),
-                    minuti_alla_soglia=trend.get('minuti_alla_soglia'),
-                    trend_vino_pendenza=trend.get('pendenza'),
-                ))
+                    # Allarme CO2: la soglia è quella specifica della sede (cfg.soglia_co2,
+                    # che l'M2M può abbassare per le sedi "gemelle" di un produttore in
+                    # allerta) e non un valore fisso uguale per tutti.
+                    allarme_attivo = valore_co2 > cfg.soglia_co2
 
-                if ris_ambiente and ris_ambiente['esito'] != 'ok':
-                    db.session.add(RisultatoML(
+                    # L'evento che fa scattare il BEEP sul frontend viene generato solo
+                    # al momento in cui la sede *entra* in allarme (fronte di salita),
+                    # non ad ogni singola lettura finché il valore resta sopra soglia —
+                    # altrimenti il suono ripartirebbe ad ogni ciclo (~ogni 5-10s).
+                    era_gia_in_allarme = _stato_allarme_co2.get(chiave_sede, False)
+                    if allarme_attivo and not era_gia_in_allarme:
+                        allarmi_recenti.append({
+                            "tipo": "CO2_ALTA", "produttore": produttore,
+                            "sede": sede, "valore": valore_co2,
+                            "ts": iso_utc(datetime.utcnow())
+                        })
+                    _stato_allarme_co2[chiave_sede] = allarme_attivo
+                    if not allarme_attivo:
+                        # Rientrata sotto soglia: sblocca anche la deduplica dell'eco
+                        # M2M (chiave_sede == "produttore/sede", stesso formato usato
+                        # per l'evento CO2_ALTA_M2M), pronta a un nuovo allarme futuro.
+                        _stato_allarme_co2_m2m.pop(chiave_sede, None)
+
+                    # Salva nel DB
+                    db.session.add(DatoSensore(
                         produttore=produttore, sede=sede,
-                        modello=ris_ambiente['modello'],
-                        esito=ris_ambiente['esito'],
-                        valore=temp_int,
-                        dettaglio=ris_ambiente['dettaglio']
+                        temp_int=temp_int, temp_est=temp_est,
+                        umid_int=umid_int, umid_est=payload.get('umid_est'),
+                        co2=valore_co2, allarme_co2=allarme_attivo,
+                        temp_vino_proiettata=temp_vino_calc,
+                        temp_vino_smorzata=temp_vino_smorzata,
+                        timer_ac_minuti=ris_timer.get('timer_ac_minuti'),
+                        timer_umid_minuti=ris_timer.get('timer_umid_minuti'),
+                        minuti_alla_soglia=trend.get('minuti_alla_soglia'),
+                        trend_vino_pendenza=trend.get('pendenza'),
                     ))
 
-                db.session.commit()
+                    if ris_ambiente and ris_ambiente['esito'] != 'ok':
+                        db.session.add(RisultatoML(
+                            produttore=produttore, sede=sede,
+                            modello=ris_ambiente['modello'],
+                            esito=ris_ambiente['esito'],
+                            valore=temp_int,
+                            dettaglio=ris_ambiente['dettaglio']
+                        ))
 
-                # ML 6: GestoreAllarmiIntelligente ogni 5 cicli
-                if _MODULI_ML_DISPONIBILI and _gestore is not None:
-                    try:
-                        _contatore_cicli[chiave_sede] = _contatore_cicli.get(chiave_sede, 0) + 1
-                        if _contatore_cicli[chiave_sede] % 5 == 0:
-                            rows = db.session.execute(db.text(
-                                "SELECT id, timestamp, produttore, sede, temp_int, temp_est, "
-                                "umid_int, umid_est, co2, allarme_co2, temp_vino_smorzata "
-                                "FROM dato_sensore ORDER BY id DESC LIMIT 30"
-                            )).fetchall()
-                            if rows:
-                                report = _gestore.analizza(list(reversed(rows)))
-                                for anomalia in report.get('anomalie', []):
-                                    db.session.add(RisultatoML(
-                                        produttore=produttore, sede=sede,
-                                        modello='anomalia_sensore_zscore',
-                                        esito='danger', valore=None,
-                                        dettaglio=str(anomalia)
-                                    ))
-                                for prod_k, sedi_allarme in report.get('stato_sedi', {}).items():
-                                    for sede_k, problemi in sedi_allarme.items():
-                                        for problema in problemi:
-                                            db.session.add(RisultatoML(
-                                                produttore=prod_k, sede=sede_k,
-                                                modello='conformita_sede',
-                                                esito='warn', valore=None,
-                                                dettaglio=str(problema)
-                                            ))
-                                qualita = report.get('qualita_vino', '')
-                                if qualita and ('ALLARME' in str(qualita) or 'PREAVVISO' in str(qualita)):
-                                    allarmi_recenti.append({
-                                        "tipo": "QUALITA_VINO_ML",
-                                        "produttore": produttore, "sede": sede,
-                                        "valore": 0, "messaggio": str(qualita),
-                                        "ts": datetime.utcnow().isoformat()
-                                    })
-                                db.session.commit()
-                                print(f"🤖 [ML] {chiave_sede} → {report.get('stato_globale', '?')}")
-                    except Exception as e_ml:
-                        print(f"⚠️  Gestore ML errore: {e_ml}")
+                    db.session.commit()
+
+                    # ML 6: GestoreAllarmiIntelligente ogni 5 cicli
+                    if _MODULI_ML_DISPONIBILI and _gestore is not None:
+                        try:
+                            _contatore_cicli[chiave_sede] = _contatore_cicli.get(chiave_sede, 0) + 1
+                            if _contatore_cicli[chiave_sede] % 5 == 0:
+                                rows = db.session.execute(db.text(
+                                    "SELECT id, timestamp, produttore, sede, temp_int, temp_est, "
+                                    "umid_int, umid_est, co2, allarme_co2, temp_vino_smorzata "
+                                    "FROM dato_sensore ORDER BY id DESC LIMIT 30"
+                                )).fetchall()
+                                if rows:
+                                    report = _gestore.analizza(list(reversed(rows)))
+                                    for anomalia in report.get('anomalie', []):
+                                        db.session.add(RisultatoML(
+                                            produttore=produttore, sede=sede,
+                                            modello='anomalia_sensore_zscore',
+                                            esito='danger', valore=None,
+                                            dettaglio=str(anomalia)
+                                        ))
+                                    for prod_k, sedi_allarme in report.get('stato_sedi', {}).items():
+                                        for sede_k, problemi in sedi_allarme.items():
+                                            for problema in problemi:
+                                                db.session.add(RisultatoML(
+                                                    produttore=prod_k, sede=sede_k,
+                                                    modello='conformita_sede',
+                                                    esito='warn', valore=None,
+                                                    dettaglio=str(problema)
+                                                ))
+                                    qualita = report.get('qualita_vino', '')
+                                    if qualita and ('ALLARME' in str(qualita) or 'PREAVVISO' in str(qualita)):
+                                        allarmi_recenti.append({
+                                            "tipo": "QUALITA_VINO_ML",
+                                            "produttore": produttore, "sede": sede,
+                                            "valore": 0, "messaggio": str(qualita),
+                                            "ts": iso_utc(datetime.utcnow())
+                                        })
+                                    db.session.commit()
+                                    print(f"🤖 [ML] {chiave_sede} → {report.get('stato_globale', '?')}")
+                        except Exception as e_ml:
+                            print(f"⚠️  Gestore ML errore: {e_ml}")
+                except Exception as e_db:
+                    db.session.rollback()
+                    print(f"❌ Errore salvataggio DB per {produttore}/{sede}: {e_db}")
 
         # ── 2. [GEO M2M] Sensore esterno sospetto: cantine/zona/<zona>/sensore_sospetto
         elif len(parti) >= 4 and parti[1] == 'zona' and parti[3] == 'sensore_sospetto':
@@ -811,14 +1033,20 @@ def on_message(client, userdata, msg):
             print(f"🏭 [PROD M2M] Allerta CO₂ da {produttore}/{sede_origine}: "
                   f"{payload.get('valore_co2')} ppm")
 
-            # Segna nel buffer allarmi per il suono frontend
-            allarmi_recenti.append({
-                "tipo": "CO2_ALTA_M2M",
-                "produttore": produttore,
-                "sede": sede_origine,
-                "valore": payload.get('valore_co2', 0),
-                "ts": datetime.utcnow().isoformat()
-            })
+            # Segna nel buffer allarmi per il suono frontend — solo al fronte di
+            # salita (difesa in profondità: il simulatore ormai pubblica questo
+            # evento una sola volta per superamento soglia, ma teniamo comunque
+            # la deduplica lato server nel caso arrivasse più di un messaggio).
+            chiave_m2m = f"{produttore}/{sede_origine}"
+            if not _stato_allarme_co2_m2m.get(chiave_m2m, False):
+                allarmi_recenti.append({
+                    "tipo": "CO2_ALTA_M2M",
+                    "produttore": produttore,
+                    "sede": sede_origine,
+                    "valore": payload.get('valore_co2', 0),
+                    "ts": iso_utc(datetime.utcnow())
+                })
+            _stato_allarme_co2_m2m[chiave_m2m] = True
 
             with app.app_context():
                 # Trova le altre sedi dello stesso produttore e aggiungi il log di doppio controllo
@@ -875,7 +1103,7 @@ def home():
     dati_sedi_json = [{
         'produttore': d.produttore,
         'sede': d.sede,
-        'timestamp': d.timestamp.strftime('%H:%M') if d.timestamp else None,
+        'timestamp': ora_locale(d.timestamp, '%H:%M') if d.timestamp else None,
         'temp_int': float(d.temp_int) if d.temp_int is not None else None,
         'temp_est': float(d.temp_est) if d.temp_est is not None else None,
         'umid_int': float(d.umid_int) if d.umid_int is not None else None,
@@ -896,13 +1124,71 @@ def home():
 @login_required
 def vista_sede(nome_sede):
     autorizzati = produttori_autorizzati()
+    # --- Controllo sugli autorizzati
+    prod_req = request.args.get('prod')
+    if prod_req and prod_req.lower() in autorizzati:
+        autorizzati = [prod_req.lower()]
+    # -------------------------------
     dati_sede = (DatoSensore.query
                  .filter(DatoSensore.sede == nome_sede,
                          DatoSensore.produttore.in_(autorizzati))
                  .order_by(DatoSensore.timestamp.desc()).limit(20).all())
+
+    # Versione serializzabile in JSON per i grafici lato client (incluse le
+    # proiezioni ML: temp_vino_proiettata, trend_vino_pendenza, timer_*, ecc.).
+    # NB: gli oggetti DatoSensore (SQLAlchemy) non sono serializzabili
+    # direttamente con |tojson, servono dizionari semplici.
+    dati_sede_json = [{
+        'produttore':           d.produttore,
+        'sede':                 d.sede,
+        'timestamp':            iso_utc(d.timestamp),
+        'temp_int':             float(d.temp_int) if d.temp_int is not None else None,
+        'temp_est':             float(d.temp_est) if d.temp_est is not None else None,
+        'umid_int':             float(d.umid_int) if d.umid_int is not None else None,
+        'umid_est':             float(d.umid_est) if d.umid_est is not None else None,
+        'co2':                  float(d.co2) if d.co2 is not None else None,
+        'allarme_co2':          bool(d.allarme_co2),
+        'temp_vino_proiettata': float(d.temp_vino_proiettata) if d.temp_vino_proiettata is not None else None,
+        'temp_vino_smorzata':   float(d.temp_vino_smorzata) if d.temp_vino_smorzata is not None else None,
+        'timer_ac_minuti':      float(d.timer_ac_minuti) if d.timer_ac_minuti is not None else None,
+        'timer_umid_minuti':    float(d.timer_umid_minuti) if d.timer_umid_minuti is not None else None,
+        'minuti_alla_soglia':   float(d.minuti_alla_soglia) if d.minuti_alla_soglia is not None else None,
+        'trend_vino_pendenza':  float(d.trend_vino_pendenza) if d.trend_vino_pendenza is not None else None,
+    } for d in dati_sede]
+
+    # Stato attuatori (per il grafico "Sistemi attivi") del campionamento più recente.
+    # Preferisce lo stato "live" già calcolato dal loop MQTT (_stato_attuatori);
+    # se il server è appena partito e non è ancora arrivato nessun messaggio,
+    # lo ricalcola al volo dall'ultima riga salvata nel DB.
+    attuatori_iniziali = None
+    stato_sede_iniziale = None
+    if dati_sede:
+        ultimo_db = dati_sede[0]
+        chiave = f"{ultimo_db.produttore}/{ultimo_db.sede}"
+        cfg_iniziale = get_config_sede(ultimo_db.produttore, ultimo_db.sede)
+
+        attuatori_iniziali = _stato_attuatori.get(chiave)
+        if attuatori_iniziali is None:
+            attuatori_iniziali = calcola_stato_attuatori(
+                ultimo_db.temp_int, ultimo_db.umid_int, ultimo_db.co2, cfg_iniziale)
+
+        # Stato di salute della sede ("Buona"/"Media"/"Cattiva"), stessa logica
+        # di preferenza: stato live se già calcolato, altrimenti ricalcolato
+        # al volo dall'ultima riga DB + ultima fascia di efficienza nota.
+        stato_sede_iniziale = _stato_sede.get(chiave)
+        if stato_sede_iniziale is None:
+            fascia_iniziale = recupera_ultima_fascia(ultimo_db.produttore, ultimo_db.sede)
+            stato_sede_iniziale = calcola_stato_sede(
+                ultimo_db.temp_int, ultimo_db.umid_int, ultimo_db.co2,
+                ultimo_db.minuti_alla_soglia, ultimo_db.trend_vino_pendenza,
+                cfg=cfg_iniziale, fascia_efficienza=fascia_iniziale)
+
     return render_template('index.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
-                           produttori_visibili=autorizzati, dati=dati_sede, sede=nome_sede)
+                           produttori_visibili=autorizzati, dati=dati_sede,
+                           dati_json=dati_sede_json, sede=nome_sede,
+                           attuatori=attuatori_iniziali,
+                           stato_sede=stato_sede_iniziale)
 
 
 @app.route('/allerte-zona')
@@ -910,16 +1196,33 @@ def vista_sede(nome_sede):
 def allerte_zona():
     """
     Pagina che mostra le comunicazioni M2M tra twin — dimostra Legge 2 Vezzani.
-    Filtra per produttore se l utente non è admin.
+
+    Regola di visibilità per i produttori (non-admin):
+    - pattern 'GEO'  → consenso sulla temperatura ESTERNA tra twin della stessa
+                        zona geografica, produttori diversi. È un dato pubblico/
+                        ambientale (non riguarda l'interno della cantina di
+                        nessuno), quindi visibile a chiunque sia autenticato.
+    - pattern 'PROD' → allerta CO₂ (dato INTERNO) scambiata solo tra le sedi
+                        dello stesso produttore. Un produttore non deve vedere
+                        i livelli di CO₂ di un produttore diverso: l'evento è
+                        visibile solo se il produttore che lo ha generato è tra
+                        quelli autorizzati per l'utente corrente.
     """
     autorizzati = produttori_autorizzati()
     query = EventoM2M.query.order_by(EventoM2M.timestamp.desc()).limit(100)
     eventi = query.all()
 
-    # Filtra per produttore se non admin (mostra solo eventi che coinvolgono i propri twin)
-    if current_user.ruolo != 'admin':
-        eventi = [e for e in eventi if any(p in (e.mittente or '') or p in (e.destinatari or '')
-                                           for p in autorizzati)]
+    if (current_user.ruolo or '').strip().lower() != 'admin':
+        def visibile(e):
+            if e.pattern == 'GEO':
+                return True  # informazione esterna, condivisa per definizione
+            # Pattern 'PROD' (e simili, futuri): dato interno, mittente nel
+            # formato "produttore/sede" — verifichiamo che il produttore che
+            # ha generato l'evento sia uno di quelli dell'utente corrente.
+            produttore_evento = (e.mittente or '').split('/')[0]
+            return produttore_evento in autorizzati
+        eventi = [e for e in eventi if visibile(e)]
+
     return render_template('allerte_zona.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
                            eventi=eventi)
@@ -957,6 +1260,9 @@ def api_allarmi_clear():
 @login_required
 def api_latest(nome_sede):
     autorizzati = produttori_autorizzati()
+    prod_req = request.args.get('prod')
+    if prod_req and prod_req.lower() in autorizzati:
+        autorizzati = [prod_req.lower()]
     subq = (db.session.query(func.max(DatoSensore.id))
             .filter(DatoSensore.sede == nome_sede,
                     DatoSensore.produttore.in_(autorizzati))
@@ -964,11 +1270,21 @@ def api_latest(nome_sede):
     ultimi = DatoSensore.query.filter(DatoSensore.id.in_(subq)).all()
     return jsonify([{
         'produttore': d.produttore, 'sede': d.sede,
-        'timestamp': d.timestamp.isoformat(),
+        'timestamp': iso_utc(d.timestamp),
         'temp_int': d.temp_int, 'temp_est': d.temp_est,
         'umid_int': d.umid_int, 'umid_est': d.umid_est,
         'co2': d.co2, 'allarme_co2': d.allarme_co2,
         'temp_vino_proiettata': d.temp_vino_proiettata,
+        # ── Campi ML aggiunti per l'aggiornamento live del grafico/pannello proiezioni ──
+        'temp_vino_smorzata': d.temp_vino_smorzata,
+        'timer_ac_minuti': d.timer_ac_minuti,
+        'timer_umid_minuti': d.timer_umid_minuti,
+        'minuti_alla_soglia': d.minuti_alla_soglia,
+        'trend_vino_pendenza': d.trend_vino_pendenza,
+        # ── Stato attuatori (Sistemi attivi) — dal buffer in memoria, non dal DB ──
+        'attuatori': _stato_attuatori.get(f"{d.produttore}/{d.sede}"),
+        # ── Stato di salute della sede (Buona/Media/Cattiva) — idem, in memoria ──
+        'stato_sede': _stato_sede.get(f"{d.produttore}/{d.sede}"),
     } for d in ultimi])
 
 
@@ -996,7 +1312,7 @@ def api_ml_stato_sedi():
         risultati.append({
             'produttore':           d.produttore,
             'sede':                 d.sede,
-            'timestamp':            d.timestamp.isoformat() if d.timestamp else None,
+            'timestamp':            iso_utc(d.timestamp),
             'temp_int':             float(d.temp_int)             if d.temp_int             is not None else None,
             'temp_est':             float(d.temp_est)             if d.temp_est             is not None else None,
             'umid_int':             float(d.umid_int)             if d.umid_int             is not None else None,
@@ -1023,7 +1339,7 @@ def api_ml_allarmi():
                  .filter(RisultatoML.produttore.in_(autorizzati))
                  .order_by(RisultatoML.timestamp.desc()).limit(50).all())
     return jsonify([{
-        'id': r.id, 'timestamp': r.timestamp.isoformat() if r.timestamp else None,
+        'id': r.id, 'timestamp': iso_utc(r.timestamp),
         'produttore': r.produttore, 'sede': r.sede,
         'modello': r.modello, 'esito': r.esito,
         'valore': float(r.valore) if r.valore is not None else None,
@@ -1068,7 +1384,7 @@ def api_ml_fascia():
         'produttore': f.produttore, 'sede': f.sede,
         'fascia': f.fascia, 'colore': f.colore,
         'score': float(f.score) if f.score else None,
-        'timestamp': f.timestamp.isoformat() if f.timestamp else None,
+        'timestamp': iso_utc(f.timestamp),
     } for f in fasce])
 
 
@@ -1078,7 +1394,7 @@ def api_eventi_m2m():
     eventi = (EventoM2M.query
               .order_by(EventoM2M.timestamp.desc()).limit(20).all())
     return jsonify([{
-        'id': e.id, 'timestamp': e.timestamp.isoformat() if e.timestamp else None,
+        'id': e.id, 'timestamp': iso_utc(e.timestamp),
         'pattern': e.pattern, 'tipo': e.tipo,
         'mittente': e.mittente, 'destinatari': e.destinatari,
         'valore': float(e.valore) if e.valore is not None else None,
@@ -1106,7 +1422,7 @@ def api_config_lista():
         'soglia_temp_bassa': c.soglia_temp_bassa,
         'soglia_umid_alta':  c.soglia_umid_alta,
         'note':            c.note,
-        'aggiornato_il':   c.aggiornato_il.isoformat() if c.aggiornato_il else None,
+        'aggiornato_il':   iso_utc(c.aggiornato_il),
     } for c in configs])
 
 
@@ -1154,7 +1470,7 @@ def api_config_sede(produttore, sede):
         'soglia_temp_bassa': cfg.soglia_temp_bassa,
         'soglia_umid_alta':  cfg.soglia_umid_alta,
         'note':            cfg.note,
-        'aggiornato_il':   cfg.aggiornato_il.isoformat() if cfg.aggiornato_il else None,
+        'aggiornato_il':   iso_utc(cfg.aggiornato_il),
     })
 
 

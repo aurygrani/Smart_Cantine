@@ -425,6 +425,268 @@
             letter-spacing: 0.1em;
             margin-top: 1rem;
         }
+
+        /* ── LEGENDA DATI REALI vs PROIEZIONI ML ── */
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 0.9rem;
+        }
+        .chart-legend .lg-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.68rem;
+            color: var(--testo-soft);
+        }
+        .chart-legend .lg-swatch {
+            width: 14px; height: 3px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+        .chart-legend .lg-swatch.dashed {
+            background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px);
+            height: 2px;
+        }
+
+        /* ── PANNELLO SUGGERIMENTI ML ── */
+        .ml-panel {
+            background: #fff;
+            border-radius: var(--r);
+            border: 1px solid var(--avorio-md);
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        .ml-panel .chart-title {
+            font-size: 0.68rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-bottom: 0.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ml-panel .ml-sub {
+            font-size: 0.72rem;
+            color: var(--testo-soft);
+            margin-bottom: 1.1rem;
+        }
+        .ml-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1.25rem;
+        }
+        .ml-metric {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            padding: 0.9rem 1rem;
+            border-radius: var(--r);
+            background: #FAF7F0;
+            border: 1px solid var(--avorio-md);
+        }
+        .ml-metric .ml-label {
+            font-size: 0.62rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+        }
+        .ml-metric .ml-value {
+            font-size: 1.5rem;
+            font-weight: 300;
+            color: var(--testo);
+            line-height: 1.1;
+        }
+        .ml-metric .ml-value .ml-unit {
+            font-size: 0.68rem;
+            color: var(--testo-soft);
+            font-weight: 400;
+        }
+        .ml-metric.ok     .ml-value { color: var(--ok); }
+        .ml-metric.warn   .ml-value { color: var(--warn); }
+        .ml-metric.danger .ml-value { color: var(--danger); }
+
+        /* ── PANNELLO SISTEMI ATTIVI (LED + buzzer) ── */
+        .sistemi-panel {
+            background: #fff;
+            border-radius: var(--r);
+            border: 1px solid var(--avorio-md);
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        .sistemi-panel .chart-title {
+            font-size: 0.68rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-bottom: 0.2rem;
+        }
+        .sistemi-panel .ml-sub {
+            font-size: 0.72rem;
+            color: var(--testo-soft);
+            margin-bottom: 1.1rem;
+        }
+        .sistemi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+        }
+        .sistema-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 1.1rem 0.75rem;
+            border-radius: var(--r);
+            background: #FAF7F0;
+            border: 1px solid var(--avorio-md);
+            transition: background 0.25s, border-color 0.25s;
+        }
+        .sistema-item .sistema-icona {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.25rem;
+            background: #EAE0CC;
+            color: rgba(26,15,15,0.35);
+            transition: background 0.25s, color 0.25s, box-shadow 0.25s;
+        }
+        .sistema-item .sistema-label {
+            font-size: 0.64rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            text-align: center;
+        }
+        .sistema-item .sistema-stato {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--testo-soft);
+        }
+
+        .sis-ac.attivo        { background: #FFF6DE; border-color: #D9A62E; }
+        .sis-ac.attivo .sistema-icona        { background: #D9A62E; color: #fff; }
+        .sis-ac.attivo .sistema-stato        { color: #B8871E; font-weight: 600; }
+
+        .sis-risc.attivo      { background: #FFEFE3; border-color: #D9701D; }
+        .sis-risc.attivo .sistema-icona      { background: #D9701D; color: #fff; }
+        .sis-risc.attivo .sistema-stato      { color: #BA5B12; font-weight: 600; }
+
+        .sis-umid.attivo      { background: #E9F1FF; border-color: #2E6FD9; }
+        .sis-umid.attivo .sistema-icona      { background: #2E6FD9; color: #fff; }
+        .sis-umid.attivo .sistema-stato      { color: #2059B0; font-weight: 600; }
+
+        .sis-co2.attivo       { background: var(--danger-bg); border-color: var(--danger); }
+        .sis-co2.attivo .sistema-icona       { background: var(--danger); color: #fff; }
+        .sis-co2.attivo .sistema-stato       { color: var(--danger); font-weight: 600; }
+
+        .sis-buzzer.attivo    { background: var(--danger-bg); border-color: var(--danger); animation: buzzer-pulse 1s infinite; }
+        .sis-buzzer.attivo .sistema-icona    { background: var(--danger); color: #fff; }
+        .sis-buzzer.attivo .sistema-stato    { color: var(--danger); font-weight: 600; }
+
+        @keyframes buzzer-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(163,45,45,0.35); }
+            50%      { box-shadow: 0 0 0 9px rgba(163,45,45,0); }
+        }
+
+        /* ── PANNELLO STATO DELLA SEDE (punteggio ML: Buona/Media/Cattiva) ── */
+        .stato-sede-panel {
+            background: #fff;
+            border-radius: var(--r);
+            border: 1px solid var(--avorio-md);
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        .stato-sede-panel .chart-title {
+            font-size: 0.68rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--testo-soft);
+            margin-bottom: 0.2rem;
+        }
+        .stato-sede-panel .ml-sub {
+            font-size: 0.72rem;
+            color: var(--testo-soft);
+            margin-bottom: 1.1rem;
+        }
+        .stato-sede-body {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            align-items: center;
+        }
+        .gauge-wrap {
+            position: relative;
+            width: 140px; height: 140px;
+            flex-shrink: 0;
+        }
+        .gauge-anello {
+            width: 140px; height: 140px;
+            border-radius: 50%;
+            background: conic-gradient(var(--gauge-colore, #999) calc(var(--gauge-pct, 0) * 1%), #EAE0CC 0);
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.6s ease;
+        }
+        .gauge-centro {
+            width: 106px; height: 106px;
+            border-radius: 50%;
+            background: #fff;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        .gauge-punteggio {
+            font-size: 1.8rem;
+            font-weight: 300;
+            color: var(--testo);
+            line-height: 1;
+        }
+        .gauge-etichetta {
+            margin-top: 0.3rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .gauge-etichetta.verde  { color: var(--ok); }
+        .gauge-etichetta.giallo { color: var(--warn); }
+        .gauge-etichetta.rosso  { color: var(--danger); }
+
+        .fattori-lista {
+            flex: 1;
+            min-width: 220px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+        .fattore-riga {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .fattore-riga .fattore-testa {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--testo-soft);
+        }
+        .fattore-riga .fattore-testa strong {
+            color: var(--testo);
+            font-weight: 500;
+        }
+        .fattore-barra-sfondo {
+            width: 100%; height: 6px;
+            border-radius: 4px;
+            background: #EAE0CC;
+            overflow: hidden;
+        }
+        .fattore-barra-riempimento {
+            height: 100%;
+            border-radius: 4px;
+            background: var(--rame);
+            transition: width 0.6s ease;
+        }
     </style>
 </head>
 <body>
@@ -439,7 +701,7 @@
     <p class="sidebar-label">Sedi</p>
     <nav>
         {% for s in ['pievepelago', 'vignola', 'carpi'] %}
-        <a href="/sede/{{ s }}" class="{% if s == sede %}active{% endif %}">
+        <a href="/sede/{{ s }}{% if request.args.get('prod') %}?prod={{ request.args.get('prod') }}{% endif %}" class="{% if s == sede %}active{% endif %}">
             <span class="dot"></span>
             {{ s | capitalize }}
         </a>
@@ -538,10 +800,111 @@
         <div class="live-ts">Ultimo aggiornamento: <span id="live-ts">—</span></div>
     </div>
 
+    <!-- Pannello "Stato della sede": punteggio sintetico Buona/Media/Cattiva,
+         combina soglie fisiche + output dei modelli ML (trend vino, efficienza) -->
+    <div class="stato-sede-panel">
+        <p class="chart-title">🏆 Stato della sede</p>
+        <p class="ml-sub">Punteggio sintetico da soglie fisiche e modelli ML (trend vino, efficienza energetica).</p>
+        <div class="stato-sede-body">
+            <div class="gauge-wrap">
+                <div id="gauge-anello" class="gauge-anello"
+                     style="--gauge-pct: {{ stato_sede.punteggio if stato_sede else 0 }}; --gauge-colore: {% if stato_sede %}{% if stato_sede.colore == 'verde' %}#1D9E75{% elif stato_sede.colore == 'giallo' %}#BA7517{% else %}#A32D2D{% endif %}{% else %}#999{% endif %};">
+                    <div class="gauge-centro">
+                        <span id="gauge-punteggio" class="gauge-punteggio">{{ "%.0f"|format(stato_sede.punteggio) if stato_sede else '—' }}</span>
+                        <span id="gauge-etichetta" class="gauge-etichetta {{ stato_sede.colore if stato_sede else '' }}">{{ stato_sede.stato if stato_sede else 'N/D' }}</span>
+                    </div>
+                </div>
+            </div>
+            <div id="fattori-lista" class="fattori-lista">
+                {% if stato_sede %}
+                {% for f in stato_sede.fattori %}
+                <div class="fattore-riga" data-nome="{{ f.nome }}">
+                    <div class="fattore-testa"><span>{{ f.nome }}</span><strong>{{ "%.0f"|format(f.punti) }}/{{ f.max }}</strong></div>
+                    <div class="fattore-barra-sfondo"><div class="fattore-barra-riempimento" style="width: {{ (f.punti / f.max * 100) if f.max else 0 }}%"></div></div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p style="font-size:0.75rem; color:var(--testo-soft);">Nessun dato ancora disponibile per questa sede.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Pannello sistemi attivi: LED (raffrescamento, riscaldamento, umidità, CO₂) + buzzer -->
+    <div class="sistemi-panel">
+        <p class="chart-title">🔌 Sistemi attivi</p>
+        <p class="ml-sub">Stato in tempo reale degli attuatori collegati all'ESP32, secondo le soglie della sede.</p>
+        <div class="sistemi-grid">
+            <div id="sis-ac" class="sistema-item sis-ac {% if attuatori and attuatori.ac %}attivo{% endif %}">
+                <span class="sistema-icona">❄️</span>
+                <span class="sistema-label">Aria condizionata</span>
+                <span id="sis-ac-stato" class="sistema-stato">{% if attuatori and attuatori.ac %}Accesa{% else %}Spenta{% endif %}</span>
+            </div>
+            <div id="sis-risc" class="sistema-item sis-risc {% if attuatori and attuatori.riscaldamento %}attivo{% endif %}">
+                <span class="sistema-icona">🔥</span>
+                <span class="sistema-label">Riscaldamento</span>
+                <span id="sis-risc-stato" class="sistema-stato">{% if attuatori and attuatori.riscaldamento %}Acceso{% else %}Spento{% endif %}</span>
+            </div>
+            <div id="sis-umid" class="sistema-item sis-umid {% if attuatori and attuatori.umidita %}attivo{% endif %}">
+                <span class="sistema-icona">💧</span>
+                <span class="sistema-label">LED umidità</span>
+                <span id="sis-umid-stato" class="sistema-stato">{% if attuatori and attuatori.umidita %}Acceso{% else %}Spento{% endif %}</span>
+            </div>
+            <div id="sis-co2" class="sistema-item sis-co2 {% if attuatori and attuatori.co2 %}attivo{% endif %}">
+                <span class="sistema-icona">🔴</span>
+                <span class="sistema-label">LED CO₂</span>
+                <span id="sis-co2-stato" class="sistema-stato">{% if attuatori and attuatori.co2 %}Acceso{% else %}Spento{% endif %}</span>
+            </div>
+            <div id="sis-buzzer" class="sistema-item sis-buzzer {% if attuatori and attuatori.buzzer %}attivo{% endif %}">
+                <span class="sistema-icona">🔊</span>
+                <span class="sistema-label">Buzzer</span>
+                <span id="sis-buzzer-stato" class="sistema-stato">{% if attuatori and attuatori.buzzer %}Attivo{% else %}Silenzioso{% endif %}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pannello suggerimenti dei modelli ML (timer impianti, trend, minuti alla soglia) -->
+    <div class="ml-panel">
+        <p class="chart-title">🤖 Modelli ML — proiezioni e suggerimenti</p>
+        <p class="ml-sub">Output calcolati dal server ad ogni ciclo, non dai sensori diretti.</p>
+        <div class="ml-grid">
+            <div class="ml-metric {% if ultimo.minuti_alla_soglia is not none and ultimo.minuti_alla_soglia < 30 %}danger{% elif ultimo.minuti_alla_soglia is not none and ultimo.minuti_alla_soglia < 60 %}warn{% elif ultimo.minuti_alla_soglia is not none %}ok{% endif %}">
+                <span class="ml-label">⏱️ Minuti alla soglia vino</span>
+                <span id="ml-val-soglia" class="ml-value">
+                    {{ "%.0f"|format(ultimo.minuti_alla_soglia) if ultimo.minuti_alla_soglia is not none else '—' }}<span class="ml-unit"> min</span>
+                </span>
+            </div>
+            <div class="ml-metric">
+                <span class="ml-label">📈 Trend temperatura vino</span>
+                <span id="ml-val-trend" class="ml-value">
+                    {{ "%+.3f"|format(ultimo.trend_vino_pendenza) if ultimo.trend_vino_pendenza is not none else '—' }}<span class="ml-unit"> °C/min</span>
+                </span>
+            </div>
+            <div class="ml-metric">
+                <span class="ml-label">❄️ Timer AC consigliato</span>
+                <span id="ml-val-timerac" class="ml-value">
+                    {{ "%.0f"|format(ultimo.timer_ac_minuti) if ultimo.timer_ac_minuti is not none else '—' }}<span class="ml-unit"> min</span>
+                </span>
+            </div>
+            <div class="ml-metric">
+                <span class="ml-label">💧 Timer umidificatore</span>
+                <span id="ml-val-timerumid" class="ml-value">
+                    {{ "%.0f"|format(ultimo.timer_umid_minuti) if ultimo.timer_umid_minuti is not none else '—' }}<span class="ml-unit"> min</span>
+                </span>
+            </div>
+        </div>
+    </div>
+
     <!-- Grafici -->
     <div class="two-col">
         <div class="chart-card">
             <p class="chart-title">Andamento temperature</p>
+            <div class="chart-legend">
+                <span class="lg-item" style="color:#72243E"><span class="lg-swatch" style="background:#72243E"></span>Interna (dato reale)</span>
+                <span class="lg-item" style="color:#993C1D"><span class="lg-swatch dashed" style="background:#993C1D"></span>Esterna (dato reale)</span>
+                <span class="lg-item" style="color:#0E7C86"><span class="lg-swatch" style="background:#0E7C86"></span>Vino (proiezione ML)</span>
+                <span class="lg-item" style="color:#5B3FA0"><span class="lg-swatch dashed" style="background:#5B3FA0"></span>Previsione futura (ML)</span>
+            </div>
             <div class="chart-wrap">
                 <canvas id="chartTemp"></canvas>
             </div>
@@ -553,6 +916,19 @@
             </div>
         </div>
     </div>
+
+    {% if ultimo.trend_vino_pendenza is not none %}
+    <div class="chart-card" style="margin-bottom:1.5rem;">
+        <p class="chart-title">Previsione ML — prossimi 30 minuti (temperatura vino)</p>
+        <div class="chart-legend">
+            <span class="lg-item" style="color:#0E7C86"><span class="lg-swatch" style="background:#0E7C86"></span>Osservato / proiettato</span>
+            <span class="lg-item" style="color:#5B3FA0"><span class="lg-swatch dashed" style="background:#5B3FA0"></span>Previsione futura (estrapolazione lineare)</span>
+        </div>
+        <div class="chart-wrap" style="height:160px;">
+            <canvas id="chartPrevisione"></canvas>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Tabella storico -->
     <div class="history-card">
@@ -577,7 +953,7 @@
             <tbody>
                 {% for d in dati %}
                 <tr class="{% if d.allarme_co2 %}row-danger{% elif d.temp_vino_proiettata and d.temp_vino_proiettata > 24 %}row-warn{% endif %}">
-                    <td>{{ d.timestamp.strftime('%d/%m %H:%M:%S') }}</td>
+                    <td>{{ d.timestamp | ora_locale }}</td>
                     <td class="{% if d.temp_int and d.temp_int > 24 %}cell-danger{% elif d.temp_int and d.temp_int > 20 %}cell-warn{% endif %}">
                         {{ "%.1f"|format(d.temp_int) if d.temp_int else '—' }}
                     </td>
@@ -614,15 +990,62 @@
 </main>
 
 <script>
+// I timestamp arrivano dal server come ISO-8601 con offset esplicito (es.
+// "...+00:00", vero UTC) — vanno sempre convertiti al fuso italiano per la
+// visualizzazione, MAI tagliati come stringa (altrimenti si mostra l'orario
+// UTC "nudo", sbagliato di 1-2h rispetto all'ora locale). Definite qui fuori
+// da qualunque blocco condizionale perché usate anche da pollLive(), che
+// gira sempre (pure quando non c'è ancora storico da graficare).
+function oraLocale(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('it-IT', {
+        timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit'
+    });
+}
+function oraLocaleConSecondi(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('it-IT', {
+        timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+}
+
 {% if dati %}
 // ── GRAFICI STORICI (renderizzati una volta sola al caricamento) ──────────────
-const storici = {{ dati | reverse | list | tojson }};
-const labels  = storici.map(d => d.timestamp.split('T')[1]?.slice(0,5) || d.timestamp.slice(11,16));
+const storici = {{ dati_json | reverse | list | tojson }};
+const labels  = storici.map(d => oraLocale(d.timestamp));
 const tInt    = storici.map(d => d.temp_int   != null ? parseFloat(d.temp_int.toFixed(1))   : null);
 const tEst    = storici.map(d => d.temp_est   != null ? parseFloat(d.temp_est.toFixed(1))   : null);
 const tVino   = storici.map(d => d.temp_vino_proiettata != null ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null);
 const co2data = storici.map(d => d.co2        != null ? parseFloat(d.co2.toFixed(0))         : null);
 
+// ── PREVISIONE FUTURA (ML) ────────────────────────────────────────────────
+// Estrapola in avanti la temperatura del vino usando la pendenza calcolata
+// dal server (trend_vino_pendenza, °C/min) a partire dall'ultimo campionamento.
+// Viene disegnata come dataset separato, nullo nello storico e valorizzato
+// solo a partire dall'ultimo punto reale, così appare visivamente "staccata"
+// dal dato osservato (linea tratteggiata di colore diverso).
+const ultimoStorico   = storici[storici.length - 1];
+const pendenzaVino    = ultimoStorico ? ultimoStorico.trend_vino_pendenza : null;
+const N_PUNTI_FUTURI  = 6;      // 6 punti proiettati
+const PASSO_MIN       = 5;      // ogni 5 minuti → 30 min di orizzonte
+
+function formattaOraFutura(baseIso, minutiOffset) {
+    const base = new Date(baseIso);
+    base.setMinutes(base.getMinutes() + minutiOffset);
+    return base.toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' });
+}
+
+const labelsFuturi = [];
+const previsioneFutura = new Array(labels.length).fill(null);
+if (ultimoStorico && ultimoStorico.temp_vino_proiettata != null && pendenzaVino != null) {
+    previsioneFutura[previsioneFutura.length - 1] = tVino[tVino.length - 1]; // aggancia la linea allo storico
+    for (let i = 1; i <= N_PUNTI_FUTURI; i++) {
+        const minutiOffset = i * PASSO_MIN;
+        const valore = ultimoStorico.temp_vino_proiettata + pendenzaVino * minutiOffset;
+        labelsFuturi.push(formattaOraFutura(ultimoStorico.timestamp, minutiOffset));
+        previsioneFutura.push(parseFloat(valore.toFixed(1)));
+    }
+}
 const chartDefaults = {
     responsive: true,
     maintainAspectRatio: false,
@@ -633,17 +1056,25 @@ const chartDefaults = {
     }
 };
 
+// ── COLORI: dati reali (sensori) vs proiezioni dei modelli ML ─────────────
+// Interna/Esterna = misure dirette dei sensori (tonalità bordeaux/rame, linea piena).
+// Vino proiettato = output del modello fisico di smorzamento termico (teal: colore
+// dedicato e distinto, perché NON è un dato misurato ma calcolato dal server).
+// Il grafico si aggiorna live ogni 5s (vedi pollLive), quindi resta a finestra
+// scorrevole fissa: la previsione oltre l'ultimo dato reale è mostrata a parte,
+// nel grafico "Previsione ML" qui sotto, per non introdurre disallineamenti
+// tra asse temporale reale e punti futuri stimati.
 const chartTemp = new Chart(document.getElementById('chartTemp'), {
     type: 'line',
     data: {
         labels,
         datasets: [
-            { label: 'Interna',    data: tInt,  borderColor: '#72243E', backgroundColor: 'rgba(114,36,62,0.08)',
+            { label: 'Interna (reale)',      data: tInt,  borderColor: '#72243E', backgroundColor: 'rgba(114,36,62,0.08)',
               borderWidth: 2, pointRadius: 3, tension: 0.35 },
-            { label: 'Esterna',    data: tEst,  borderColor: '#993C1D', backgroundColor: 'rgba(153,60,29,0.06)',
+            { label: 'Esterna (reale)',      data: tEst,  borderColor: '#993C1D', backgroundColor: 'rgba(153,60,29,0.06)',
               borderWidth: 1.5, pointRadius: 2, borderDash: [4,3], tension: 0.35 },
-            { label: 'Vino proj.', data: tVino, borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.06)',
-              borderWidth: 1.5, pointRadius: 2, borderDash: [2,2], tension: 0.35 }
+            { label: 'Vino (proiezione ML)', data: tVino, borderColor: '#0E7C86', backgroundColor: 'rgba(14,124,134,0.08)',
+              borderWidth: 2, pointRadius: 2, tension: 0.35 }
         ]
     },
     options: {
@@ -652,6 +1083,38 @@ const chartTemp = new Chart(document.getElementById('chartTemp'), {
             y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: '#7A5C5C' } } }
     }
 });
+
+// ── GRAFICO SEPARATO: previsione ML sui prossimi 30 minuti ────────────────
+// Ricalcolato una volta al caricamento pagina (e ad ogni refresh) sulla base
+// dell'ultima pendenza (trend_vino_pendenza) restituita dal modello di trend.
+// Ultimi 5 punti reali + estrapolazione lineare, colori distinti dal reale.
+if (ultimoStorico && ultimoStorico.temp_vino_proiettata != null && pendenzaVino != null) {
+    const ultimiReali = storici.slice(-5);
+    const labelsPrev = ultimiReali.map(d => oraLocale(d.timestamp)).concat(labelsFuturi);
+    const realePrev  = ultimiReali.map(d => d.temp_vino_proiettata != null ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null)
+                                   .concat(new Array(labelsFuturi.length).fill(null));
+    const futuroPrev = new Array(ultimiReali.length - 1).fill(null)
+                            .concat([realePrev[ultimiReali.length - 1]])
+                            .concat(previsioneFutura.slice(-N_PUNTI_FUTURI));
+
+    new Chart(document.getElementById('chartPrevisione'), {
+        type: 'line',
+        data: {
+            labels: labelsPrev,
+            datasets: [
+                { label: 'Vino (osservato/proiettato)', data: realePrev, borderColor: '#0E7C86', backgroundColor: 'rgba(14,124,134,0.08)',
+                  borderWidth: 2, pointRadius: 3, tension: 0.3 },
+                { label: 'Previsione futura (ML)', data: futuroPrev, borderColor: '#5B3FA0', backgroundColor: 'rgba(91,63,160,0.06)',
+                  borderWidth: 2, pointRadius: 2, borderDash: [4,3], tension: 0.2 }
+            ]
+        },
+        options: {
+            ...chartDefaults,
+            scales: { ...chartDefaults.scales,
+                y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: '#7A5C5C' } } }
+        }
+    });
+}
 
 const chartCO2 = new Chart(document.getElementById('chartCO2'), {
     type: 'bar',
@@ -676,6 +1139,7 @@ const chartCO2 = new Chart(document.getElementById('chartCO2'), {
 // ── AGGIORNAMENTO LIVE DEL PANNELLO (senza ricaricare la pagina) ─────────────
 
 const SEDE = "{{ sede }}";
+const RUOLO = "{{ ruolo | lower}}"; // coincide col nome produttore per gli utenti non-admin
 
 // Mappa: id elemento → { campo nel JSON, decimali, soglie colore }
 const CAMPI = [
@@ -692,6 +1156,82 @@ const CAMPI = [
     { id: 'val-vino',     campo: 'temp_vino_proiettata', dec: 1, unit: ' °C',
       classi: v => v > 24 ? 'danger' : 'good' },
 ];
+
+// ── Aggiorna il pannello "Stato della sede" (gauge + barre dei fattori) ──────
+const COLORI_STATO = { verde: '#1D9E75', giallo: '#BA7517', rosso: '#A32D2D' };
+
+function aggiornaStatoSede(stato) {
+    if (!stato) return; // nessun dato ancora disponibile
+    const anello = document.getElementById('gauge-anello');
+    const punteggioEl = document.getElementById('gauge-punteggio');
+    const etichettaEl = document.getElementById('gauge-etichetta');
+    if (anello) {
+        anello.style.setProperty('--gauge-pct', stato.punteggio);
+        anello.style.setProperty('--gauge-colore', COLORI_STATO[stato.colore] || '#999');
+    }
+    if (punteggioEl) punteggioEl.textContent = Math.round(stato.punteggio);
+    if (etichettaEl) {
+        etichettaEl.textContent = stato.stato;
+        etichettaEl.className = 'gauge-etichetta ' + (stato.colore || '');
+    }
+
+    const lista = document.getElementById('fattori-lista');
+    if (!lista || !stato.fattori) return;
+    // Aggiorna le barre esistenti per nome invece di ricostruire il DOM da zero,
+    // per non perdere l'effetto di transizione CSS sulla larghezza
+    stato.fattori.forEach(f => {
+        const riga = lista.querySelector(`.fattore-riga[data-nome="${CSS.escape(f.nome)}"]`);
+        if (!riga) return;
+        const valoreEl = riga.querySelector('.fattore-testa strong');
+        const barraEl  = riga.querySelector('.fattore-barra-riempimento');
+        if (valoreEl) valoreEl.textContent = `${Math.round(f.punti)}/${f.max}`;
+        if (barraEl)  barraEl.style.width = `${f.max ? (f.punti / f.max * 100) : 0}%`;
+    });
+}
+
+// ── Aggiorna il pannello "Sistemi attivi" (LED + buzzer) ─────────────────────
+const SISTEMI = [
+    { key: 'ac',            id: 'sis-ac',      onLabel: 'Accesa', offLabel: 'Spenta' },
+    { key: 'riscaldamento', id: 'sis-risc',    onLabel: 'Acceso', offLabel: 'Spento' },
+    { key: 'umidita',       id: 'sis-umid',    onLabel: 'Acceso', offLabel: 'Spento' },
+    { key: 'co2',           id: 'sis-co2',     onLabel: 'Acceso', offLabel: 'Spento' },
+    { key: 'buzzer',        id: 'sis-buzzer',  onLabel: 'Attivo', offLabel: 'Silenzioso' },
+];
+
+function aggiornaSistemiAttivi(attuatori) {
+    if (!attuatori) return; // nessun dato ancora disponibile (es. server appena riavviato)
+    SISTEMI.forEach(s => {
+        const el   = document.getElementById(s.id);
+        const stat = document.getElementById(s.id + '-stato');
+        if (!el || !stat) return;
+        const acceso = !!attuatori[s.key];
+        el.classList.toggle('attivo', acceso);
+        stat.textContent = acceso ? s.onLabel : s.offLabel;
+    });
+}
+
+// ── Aggiorna il pannello "Modelli ML" (proiezioni e suggerimenti) ────────────
+function aggiornaML(d) {
+    const soglia = document.getElementById('ml-val-soglia');
+    if (soglia) {
+        soglia.innerHTML = (d.minuti_alla_soglia != null ? d.minuti_alla_soglia.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
+        const box = soglia.closest('.ml-metric');
+        box.classList.remove('ok', 'warn', 'danger');
+        if (d.minuti_alla_soglia != null) {
+            box.classList.add(d.minuti_alla_soglia < 30 ? 'danger' : d.minuti_alla_soglia < 60 ? 'warn' : 'ok');
+        }
+    }
+    const trend = document.getElementById('ml-val-trend');
+    if (trend) {
+        trend.innerHTML = (d.trend_vino_pendenza != null
+            ? (d.trend_vino_pendenza >= 0 ? '+' : '') + d.trend_vino_pendenza.toFixed(3)
+            : '—') + '<span class="ml-unit"> °C/min</span>';
+    }
+    const timerAc = document.getElementById('ml-val-timerac');
+    if (timerAc) timerAc.innerHTML = (d.timer_ac_minuti != null ? d.timer_ac_minuti.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
+    const timerUmid = document.getElementById('ml-val-timerumid');
+    if (timerUmid) timerUmid.innerHTML = (d.timer_umid_minuti != null ? d.timer_umid_minuti.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
+}
 
 function aggiornaValore(cfg, nuovoValore) {
     const el = document.getElementById(cfg.id);
@@ -721,7 +1261,10 @@ function aggiornaValore(cfg, nuovoValore) {
 
 async function pollLive() {
     try {
-        const res  = await fetch(`/api/sede/${SEDE}/latest`);
+        // --- ULTIME MODIFICHE
+        const urlParams = new URLSearchParams(window.location.search);
+        const prodParam = urlParams.has('prod') ? `?prod=${urlParams.get('prod')}` : '';
+        const res  = await fetch(`/api/sede/${SEDE}/latest${prodParam}`);
         if (!res.ok) return;
         const lista = await res.json();
         if (!lista.length) return;
@@ -730,18 +1273,19 @@ async function pollLive() {
         const d = lista[0];
 
         CAMPI.forEach(cfg => aggiornaValore(cfg, d[cfg.campo]));
+        aggiornaML(d); // aggiorna il pannello "Modelli ML" (timer, trend, minuti alla soglia)
+        aggiornaSistemiAttivi(d.attuatori); // aggiorna il pannello "Sistemi attivi" (LED + buzzer)
+        aggiornaStatoSede(d.stato_sede); // aggiorna il pannello "Stato della sede" (gauge + fattori)
 
         // Aggiorna timestamp
         if (d.timestamp) {
-            const ts = new Date(d.timestamp + 'Z');
-            document.getElementById('live-ts').textContent =
-                ts.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('live-ts').textContent = oraLocaleConSecondi(d.timestamp);
         }
 
         // Aggiorna grafico temperatura aggiungendo il punto più recente
         {% if dati %}
         if (typeof chartTemp !== 'undefined') {
-            const ora = d.timestamp ? d.timestamp.slice(11,16) : '';
+            const ora = oraLocale(d.timestamp);
             const ultLabel = chartTemp.data.labels.at(-1);
             if (ora && ora !== ultLabel) {
                 chartTemp.data.labels.push(ora);
@@ -817,8 +1361,12 @@ async function pollAllarmi() {
         if (ult.ts === ultimoAllarmeTs) return;
         ultimoAllarmeTs = ult.ts;
 
-        // Suona solo se l'allarme riguarda questa sede
+        // Suona solo se l'allarme riguarda questa sede — e, per i produttori
+        // (non admin), solo se è realmente il LORO produttore a averlo generato.
+        // Difesa in profondità: il backend filtra già per produttore in
+        // /api/allarmi/recenti, questo è un controllo aggiuntivo lato client.
         if (ult.sede !== SEDE) return;
+        if (RUOLO !== 'admin' && ult.produttore !== RUOLO) return;
 
         beep(ult.tipo);
 
@@ -829,7 +1377,7 @@ async function pollAllarmi() {
         banner.style.display = 'flex';
         banner.innerHTML = isVino
             ? `⚠️ Vino in surriscaldamento — temperatura proiettata: ${parseFloat(ult.valore).toFixed(1)}°C`
-            : `🚨 Allarme CO₂ — valore: ${parseFloat(ult.valore).toFixed(0)} ppm (soglia 1000 ppm)`;
+            : `🚨 Allarme CO₂ — valore: ${parseFloat(ult.valore).toFixed(0)} ppm`;
 
     } catch(e) {}
 }
