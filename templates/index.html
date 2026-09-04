@@ -881,7 +881,7 @@
                 </span>
             </div>
             <div class="ml-metric">
-                <span class="ml-label">❄️ Timer AC consigliato</span>
+                <span class="ml-label">❄️ Timer raffreddamento consigliato</span>
                 <span id="ml-val-timerac" class="ml-value">
                     {{ "%.0f"|format(ultimo.timer_ac_minuti) if ultimo.timer_ac_minuti is not none else '—' }}<span class="ml-unit"> min</span>
                 </span>
@@ -890,6 +890,12 @@
                 <span class="ml-label">💧 Timer umidificatore</span>
                 <span id="ml-val-timerumid" class="ml-value">
                     {{ "%.0f"|format(ultimo.timer_umid_minuti) if ultimo.timer_umid_minuti is not none else '—' }}<span class="ml-unit"> min</span>
+                </span>
+            </div>
+            <div class="ml-metric">
+                <span class="ml-label">🔥 Timer riscaldamento consigliato</span>
+                <span id="ml-val-timerrisc" class="ml-value">
+                    {{ "%.0f"|format(ultimo.timer_risc_minuti) if ultimo.timer_risc_minuti is not none else '—' }}<span class="ml-unit"> min</span>
                 </span>
             </div>
         </div>
@@ -1231,6 +1237,8 @@ function aggiornaML(d) {
     if (timerAc) timerAc.innerHTML = (d.timer_ac_minuti != null ? d.timer_ac_minuti.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
     const timerUmid = document.getElementById('ml-val-timerumid');
     if (timerUmid) timerUmid.innerHTML = (d.timer_umid_minuti != null ? d.timer_umid_minuti.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
+    const timerRisc = document.getElementById('ml-val-timerrisc');
+    if (timerRisc) timerRisc.innerHTML = (d.timer_risc_minuti != null ? d.timer_risc_minuti.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
 }
 
 function aggiornaValore(cfg, nuovoValore) {

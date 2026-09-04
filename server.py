@@ -133,25 +133,40 @@ buffer_fusione = {
 _ultimo_payload_salvato: dict = {}
 
 # Soglie per i comandi agli attuatori ESP32
-SOGLIA_TEMP_ALTA = 26.0  # °C → accende LED_TEMPERATURA (raffrescamento)
-SOGLIA_TEMP_BASSA = 10.0  # °C → accende LED riscaldamento (puoi usare LED_UMIDITA come secondo led)
+SOGLIA_TEMP_ALTA = 26.0  # °C → accende LED_TEMPERATURA (serve raffrescamento)
+SOGLIA_TEMP_BASSA = 10.0  # °C → accende LED_TEMPERATURA (serve riscaldamento)
 SOGLIA_UMID_ALTA = 80.0  # %  → accende LED_UMIDITA
 SOGLIA_CO2_ALTA = 1000  # ppm → accende LED_CO2 + BUZZER
 
 
-def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2):
+def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=None):
     """
     Calcola lo stato degli attuatori in base alle soglie e
     invia il comando all'ESP32 nel formato che si aspetta:
     TEMP=1;UMID=0;CO2=1;BUZZER=0
 
-    TEMP=1  → LED giallo acceso  = impianto raffrescamento attivo
-    TEMP=0  → LED giallo spento  = temperatura ok
-    UMID=1  → LED blu acceso     = umidità alta (o riscaldamento se temp bassa)
-    CO2=1   → LED rosso acceso   = CO2 elevata
-    BUZZER=1→ buzzer attivo      = allarme critico
+    TEMP=1  → LED temperatura acceso  = serve un intervento sulla temperatura
+              (raffrescamento SE temp_int troppo alta, riscaldamento SE troppo
+              bassa — è un unico LED/pin sul firmware ESP32, non distingue le
+              due direzioni: vedi ESP32_interno.ino, un solo statoTemperatura)
+    TEMP=0  → LED temperatura spento  = temperatura ok
+    UMID=1  → LED umidità acceso      = umidità fuori soglia (SOLO umidità,
+              nessuna condivisione con la temperatura)
+    CO2=1   → LED CO2 acceso          = CO2 elevata
+    BUZZER=1→ buzzer attivo           = allarme critico
+
+    forza_temp: se non None (True/False), sovrascrive la decisione su TEMP
+    calcolata dalla sola soglia fissa. Usato dal blocco ML (vedi on_message)
+    per far arrivare davvero all'ESP32 la raccomandazione del modello
+    (es. "accendi il condizionatore" o "accendi il riscaldamento") anche
+    quando la temperatura istantanea non ha ancora superato/ceduto la soglia
+    fissa — prima questo override non esisteva e il consiglio ML restava
+    solo un numero in dashboard, senza mai tradursi in un comando reale.
     """
-    led_temp = 1 if (temp_int is not None and temp_int > SOGLIA_TEMP_ALTA) else 0
+    led_temp = 1 if (temp_int is not None and
+                      (temp_int > SOGLIA_TEMP_ALTA or temp_int < SOGLIA_TEMP_BASSA)) else 0
+    if forza_temp is not None:
+        led_temp = 1 if forza_temp else 0
     led_umid = 1 if (umid_int is not None and umid_int > SOGLIA_UMID_ALTA) else 0
     led_co2 = 1 if (co2 is not None and co2 > SOGLIA_CO2_ALTA) else 0
     buzzer = 1 if (co2 is not None and co2 > SOGLIA_CO2_ALTA) else 0
@@ -170,14 +185,14 @@ def calcola_stato_attuatori(temp_int, umid_int, co2, cfg=None):
     Calcola quali "sistemi" risultano attivi secondo le soglie della sede,
     per la rappresentazione visiva in dashboard (grafico "Sistemi attivi").
 
-    A differenza di calcola_e_invia_comandi() — che invia il comando reale
-    via MQTT SOLO al twin fisico urbani/pievepelago, nel formato a 3 LED
-    che il firmware ESP32 si aspetta (TEMP;UMID;CO2;BUZZER) — questa funzione
-    viene eseguita per OGNI sede (reale e simulata) e distingue anche il
-    riscaldamento (temperatura troppo bassa), che sull'hardware fisico
-    attuale condivide il LED blu con l'allarme umidità (vedi commento sopra)
-    ma che in dashboard mostriamo come indicatore separato, più leggibile
-    per chi guarda il progetto.
+    Questa funzione gira per OGNI sede (reale e simulata) e distingue 'ac' e
+    'riscaldamento' come due indicatori SEPARATI, più leggibili per chi
+    guarda la dashboard — ma è solo una distinzione software/informativa.
+    Sull'hardware fisico (solo urbani/pievepelago) le due condizioni pilotano
+    lo STESSO LED_TEMPERATURA (vedi calcola_e_invia_comandi): il firmware
+    ESP32 ha un solo pin per la temperatura, che si accende sia per troppo
+    caldo sia per troppo freddo, e un pin separato e indipendente per
+    l'umidità (nessuna condivisione tra i due).
 
     Ritorna un dizionario con lo stato (0/1) di ogni sistema + le soglie usate.
     """
@@ -303,6 +318,7 @@ class DatoSensore(db.Model):
     # Regressore multi-output: timer impianti
     timer_ac_minuti      = db.Column(db.Float)   # minuti consigliati di attivazione AC
     timer_umid_minuti    = db.Column(db.Float)   # minuti consigliati di umidificatore
+    timer_risc_minuti    = db.Column(db.Float)   # minuti consigliati di riscaldamento (stessa fonte del climatizzatore, smistata per 'modalita')
 
     # Trend temperatura vino (regressione lineare sullo storico)
     minuti_alla_soglia   = db.Column(db.Float)   # minuti stimati prima di superare soglia critica
@@ -408,6 +424,7 @@ with app.app_context():
         "ALTER TABLE dato_sensore ADD COLUMN temp_vino_smorzata FLOAT",
         "ALTER TABLE dato_sensore ADD COLUMN timer_ac_minuti FLOAT",
         "ALTER TABLE dato_sensore ADD COLUMN timer_umid_minuti FLOAT",
+        "ALTER TABLE dato_sensore ADD COLUMN timer_risc_minuti FLOAT",
         "ALTER TABLE dato_sensore ADD COLUMN minuti_alla_soglia FLOAT",
         "ALTER TABLE dato_sensore ADD COLUMN trend_vino_pendenza FLOAT",
     ]
@@ -601,16 +618,21 @@ def ml_timer_impianti(temp_int, umid_int, temp_est, umid_est=None,
                        temp_target=18.0, umid_target=65.0,
                        isolamento=1.0, volume=500.0):
     """
-    [STUB → PRONTO PER IL MODELLO REALE]
+    [STUB → usato SOLO quando i moduli della collega non sono importabili]
     Firma aggiornata per corrispondere esattamente a prevedi_minuti_sistemi():
         prevedi_minuti_sistemi(temp_est, temp_int, umid_est, umid_int,
                                target_temp, target_umid, isolamento, volume)
 
-    Quando la collega porta regressore_sistemi_multi.pkl, sostituire il corpo
-    con la chiamata diretta a prevedi_minuti_sistemi().
+    Come avvia_cicli_smart_sistemi() (logica_business.py), il "climatizzatore"
+    è UN SOLO sistema che copre sia il raffreddamento che il riscaldamento:
+    qui distinguiamo la direzione dal segno di (temp_int - temp_target),
+    esattamente come fa lei con 'delta_temp' e 'modalita'.
 
-    Ritorna: {'timer_ac_minuti': float, 'timer_umid_minuti': float}
+    Ritorna: {'timer_ac_minuti': float, 'timer_risc_minuti': float, 'timer_umid_minuti': float}
     """
+    delta_temp = (temp_int or 0) - temp_target
+    delta_umid = (umid_int or 0) - umid_target
+
     # ── Usa il modello reale quando disponibile ──────────────────────────────
     if _modello_timer_ac is not None and ML_DISPONIBILE.get('numpy'):
         import numpy as np
@@ -627,15 +649,21 @@ def ml_timer_impianti(temp_int, umid_int, temp_est, umid_est=None,
             volume
         ]])
         pred = _modello_timer_ac.predict(X)[0]
-        return {'timer_ac_minuti': round(float(pred[0]), 1),
-                'timer_umid_minuti': round(float(pred[1]), 1)}
+        minuti_clima = round(float(pred[0]), 1)
+        minuti_umid = round(float(pred[1]), 1)
+        if delta_temp < 0:
+            return {'timer_ac_minuti': 0.0, 'timer_risc_minuti': minuti_clima, 'timer_umid_minuti': minuti_umid}
+        return {'timer_ac_minuti': minuti_clima, 'timer_risc_minuti': 0.0, 'timer_umid_minuti': minuti_umid}
 
     # ── Fallback proporzionale (stub attivo finché il .pkl non arriva) ───────
-    delta_temp = (temp_int or 0) - temp_target
-    delta_umid = (umid_int or 0) - umid_target
-    timer_ac   = max(0.0, round(delta_temp * 3.0, 1))
     timer_umid = max(0.0, round(abs(delta_umid) * 1.5, 1)) if delta_umid > 5 else 0.0
-    return {'timer_ac_minuti': timer_ac, 'timer_umid_minuti': timer_umid}
+    if delta_temp < 0:
+        return {'timer_ac_minuti': 0.0,
+                'timer_risc_minuti': max(0.0, round(-delta_temp * 3.0, 1)),
+                'timer_umid_minuti': timer_umid}
+    return {'timer_ac_minuti': max(0.0, round(delta_temp * 3.0, 1)),
+            'timer_risc_minuti': 0.0,
+            'timer_umid_minuti': timer_umid}
 
 
 def ml_fascia_efficienza(temp_int_media, temp_est_media,
@@ -887,16 +915,50 @@ def on_message(client, userdata, msg):
                     if _MODULI_ML_DISPONIBILI:
                         profilo_timer = recupera_profilo_produttore(produttore) or {}
                         config_fisica = recupera_dati_sede(produttore, sede)
+                        target_temp_timer = profilo_timer.get('target_ambiente_temp', cfg.target_temp)
                         comandi_motori = avvia_cicli_smart_sistemi(
                             temp_est or 0, temp_int or 0,
                             payload.get('umid_est') or 0, umid_int or 0,
-                            target_temp=profilo_timer.get('target_ambiente_temp', cfg.target_temp),
+                            target_temp=target_temp_timer,
                             target_umid=profilo_timer.get('target_ambiente_umid', cfg.target_umid),
                             isolamento=config_fisica.get('isolamento', cfg.isolamento),
                             volume=config_fisica.get('volume', cfg.volume_m3)
                         )
+
+                        # ── 'climatizzatore' è UN solo sistema che copre sia il
+                        # raffreddamento che il riscaldamento (vedi 'modalita' in
+                        # avvia_cicli_smart_sistemi, logica_business.py): prima
+                        # prendevamo solo 'timer_minuti' e lo mostravamo sempre
+                        # come "AC", quindi quando il modello raccomandava
+                        # riscaldamento (modalita 'RISCALDAMENTO_*') il numero
+                        # finiva comunque nel riquadro AC — o peggio, veniva
+                        # interpretato come "accendi il condizionatore".
+                        # Qui leggiamo la modalita per smistare il valore nel
+                        # riquadro giusto (AC vs riscaldamento).
+                        info_clima = comandi_motori['climatizzatore']
+                        modalita_clima = (info_clima.get('modalita') or '').upper()
+                        minuti_clima = info_clima.get('timer_minuti') or 0
+
+                        if minuti_clima <= 0:
+                            timer_ac_min, timer_risc_min = 0.0, 0.0
+                        elif 'RISCALDAMENTO' in modalita_clima:
+                            timer_ac_min, timer_risc_min = 0.0, float(minuti_clima)
+                        elif 'RAFFREDDAMENTO' in modalita_clima:
+                            timer_ac_min, timer_risc_min = float(minuti_clima), 0.0
+                        else:
+                            # Fallback quando il .pkl non è disponibile e
+                            # avvia_cicli_smart_sistemi() ritorna 'STANDARD':
+                            # decidiamo la direzione dal segno dello scarto
+                            # dalla temperatura target (stessa logica che usa
+                            # lei internamente per calcolare 'modalita').
+                            if (temp_int or 0) < target_temp_timer:
+                                timer_ac_min, timer_risc_min = 0.0, float(minuti_clima)
+                            else:
+                                timer_ac_min, timer_risc_min = float(minuti_clima), 0.0
+
                         ris_timer = {
-                            'timer_ac_minuti': comandi_motori['climatizzatore']['timer_minuti'],
+                            'timer_ac_minuti': timer_ac_min,
+                            'timer_risc_minuti': timer_risc_min,
                             'timer_umid_minuti': comandi_motori['sistema_umidita']['timer_minuti'],
                         }
                     else:
@@ -907,6 +969,28 @@ def on_message(client, userdata, msg):
                             umid_target=cfg.target_umid,
                             isolamento=cfg.isolamento,
                             volume=cfg.volume_m3
+                        )
+
+                    # ── Comando ML → ESP32 (SOLO twin fisico urbani/pievepelago) ──
+                    # calcola_e_invia_comandi() è già stato chiamato più sopra
+                    # (fast-path, appena arriva un dato interno) ma usa SOLO le
+                    # soglie fisse: se il modello ML raccomanda di intervenire
+                    # sulla temperatura (timer_ac_minuti > 0 per il freddo,
+                    # timer_risc_minuti > 0 per il caldo — es. perché il trend
+                    # sta peggiorando anche se la soglia non è ancora superata)
+                    # quel consiglio restava solo in dashboard e non veniva MAI
+                    # inviato all'attuatore reale. Qui, ora che il timer ML è
+                    # pronto, rimandiamo il comando forzando il LED_TEMPERATURA
+                    # (un solo pin per caldo e freddo, vedi ESP32_interno.ino)
+                    # in base al consiglio ML.
+                    if produttore == 'urbani' and sede == 'pievepelago':
+                        temp_richiede_intervento_ml = (
+                            (ris_timer.get('timer_ac_minuti') or 0) > 0 or
+                            (ris_timer.get('timer_risc_minuti') or 0) > 0
+                        )
+                        calcola_e_invia_comandi(
+                            client, temp_int, umid_int, valore_co2,
+                            forza_temp=temp_richiede_intervento_ml
                         )
 
                     # Allarmi tradizionali
@@ -951,6 +1035,7 @@ def on_message(client, userdata, msg):
                         temp_vino_smorzata=temp_vino_smorzata,
                         timer_ac_minuti=ris_timer.get('timer_ac_minuti'),
                         timer_umid_minuti=ris_timer.get('timer_umid_minuti'),
+                        timer_risc_minuti=ris_timer.get('timer_risc_minuti'),
                         minuti_alla_soglia=trend.get('minuti_alla_soglia'),
                         trend_vino_pendenza=trend.get('pendenza'),
                     ))
@@ -1152,6 +1237,7 @@ def vista_sede(nome_sede):
         'temp_vino_smorzata':   float(d.temp_vino_smorzata) if d.temp_vino_smorzata is not None else None,
         'timer_ac_minuti':      float(d.timer_ac_minuti) if d.timer_ac_minuti is not None else None,
         'timer_umid_minuti':    float(d.timer_umid_minuti) if d.timer_umid_minuti is not None else None,
+        'timer_risc_minuti':    float(d.timer_risc_minuti) if d.timer_risc_minuti is not None else None,
         'minuti_alla_soglia':   float(d.minuti_alla_soglia) if d.minuti_alla_soglia is not None else None,
         'trend_vino_pendenza':  float(d.trend_vino_pendenza) if d.trend_vino_pendenza is not None else None,
     } for d in dati_sede]
@@ -1279,6 +1365,7 @@ def api_latest(nome_sede):
         'temp_vino_smorzata': d.temp_vino_smorzata,
         'timer_ac_minuti': d.timer_ac_minuti,
         'timer_umid_minuti': d.timer_umid_minuti,
+        'timer_risc_minuti': d.timer_risc_minuti,
         'minuti_alla_soglia': d.minuti_alla_soglia,
         'trend_vino_pendenza': d.trend_vino_pendenza,
         # ── Stato attuatori (Sistemi attivi) — dal buffer in memoria, non dal DB ──
@@ -1322,6 +1409,7 @@ def api_ml_stato_sedi():
             'temp_vino_smorzata':   float(d.temp_vino_smorzata)   if d.temp_vino_smorzata   is not None else None,
             'timer_ac_minuti':      float(d.timer_ac_minuti)      if d.timer_ac_minuti      is not None else None,
             'timer_umid_minuti':    float(d.timer_umid_minuti)    if d.timer_umid_minuti    is not None else None,
+            'timer_risc_minuti':    float(d.timer_risc_minuti)    if d.timer_risc_minuti    is not None else None,
             'minuti_alla_soglia':   float(d.minuti_alla_soglia)   if d.minuti_alla_soglia   is not None else None,
             'trend_pendenza':       float(d.trend_vino_pendenza)  if d.trend_vino_pendenza  is not None else None,
             'fascia':               fascia.fascia  if fascia else None,
