@@ -17,7 +17,7 @@ client = mqtt.Client(client_id="sensore_finto")
 client.connect(BROKER, PORT, 60)
 client.loop_start()
 
-# Valori base realistici per una cantina
+# Valori base realistici per una cantina estiva
 temp_int = 18.0
 temp_est = 22.0
 umid_int = 65.0
@@ -54,4 +54,4 @@ while True:
     client.publish(TOPIC, json.dumps(payload), qos=0)
     print(f"📤 Inviato: {payload}")
 
-    time.sleep(10)
+    time.sleep(30)

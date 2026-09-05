@@ -310,12 +310,35 @@ def verifica_anomalia_temp_int(dati_per_produttore: dict):
 
 # ── MOTORE EVENT-DRIVEN ────────────────────────────────────────────────────────
 
+# Buffer di fusione per il seed reale (ESP32 + ESP8266 di pievepelago).
+# STESSA logica di buffer_fusione in server.py: il firmware reale pubblica
+# in DUE messaggi separati sullo stesso topic (ESP32 → temp_int/umid_int/co2,
+# ESP8266 → temp_est/umid_est), mai un unico messaggio con tutti e 5 i campi.
+# Prima questa funzione pretendeva un messaggio completo in un colpo solo
+# (`required.issubset(seed.keys())`), quindi con l'hardware reale non era
+# MAI vero e l'intera cascata di generazione dei twin virtuali + le analisi
+# M2M non partivano mai. Qui accumuliamo i campi finché non sono tutti
+# presenti, poi procediamo con l'ultimo valore noto di ciascuno.
+_buffer_seed = {
+    'temp_int': None, 'umid_int': None, 'co2': None,
+    'temp_est': None, 'umid_est': None,
+}
+
+
 def on_message_sub(client, userdata, msg):
     try:
-        seed = json.loads(msg.payload.decode('utf-8'))
-        required = {'temp_int', 'temp_est', 'umid_int', 'umid_est', 'co2'}
-        if not required.issubset(seed.keys()):
+        frammento = json.loads(msg.payload.decode('utf-8'))
+
+        for campo in _buffer_seed:
+            if campo in frammento:
+                _buffer_seed[campo] = frammento[campo]
+
+        if None in _buffer_seed.values():
+            campi_mancanti = [k for k, v in _buffer_seed.items() if v is None]
+            print(f"   ⏳ Seed incompleto, mancano: {', '.join(campi_mancanti)}")
             return
+
+        seed = dict(_buffer_seed)
 
         print(f"\n📥 Seed da {LUOGO_SEED} → "
               f"T_int={seed['temp_int']}°C | T_est={seed['temp_est']}°C | CO₂={seed['co2']}ppm")
@@ -341,6 +364,17 @@ def on_message_sub(client, userdata, msg):
 
                 if prod == PRODUTTORE_SEED and luogo == LUOGO_SEED:
                     continue  # Il seed reale ha già pubblicato i propri dati
+
+                if prod == 'urbani' and luogo == 'vignola':
+                    # urbani/vignola è riservata al sensore finto per l'esame
+                    # (sensore_finto_vignola.py), che pubblica direttamente e
+                    # separatamente su questo topic con valori volutamente
+                    # estremi. Se generassimo anche qui i due publisher
+                    # scriverebbero sullo stesso topic in competizione, e i
+                    # valori "normali" di questo simulatore continuerebbero a
+                    # sovrascrivere quelli estremi della demo (o viceversa),
+                    # rendendo tutto incoerente in dashboard.
+                    continue
 
                 # Applica offset fisici + rumore gaussiano
                 temp_int = rumore_gaussiano(

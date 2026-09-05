@@ -971,6 +971,26 @@ def on_message(client, userdata, msg):
                             volume=cfg.volume_m3
                         )
 
+                    # ── Aggiorna lo stato attuatori (LED "Sistemi attivi") con l'output ML ──
+                    # calcola_stato_attuatori() più sopra (riga ~901) è stato calcolato
+                    # PRIMA che il timer ML fosse pronto, usando SOLO le soglie fisse.
+                    # Per questo, anche quando il pannello ML consigliava "accendi il
+                    # condizionatore per 7 minuti", il LED "Aria condizionata" restava
+                    # spento: il consiglio del modello non arrivava mai a questo stato —
+                    # né per il twin fisico, né (soprattutto) per le sedi SIMULATE, che
+                    # non hanno alcun ESP32 reale e dipendono SOLO da questo dizionario
+                    # per mostrare qualcosa in dashboard. Qui uniamo (OR logico) la
+                    # soglia fissa con il consiglio ML, per ogni sede — reale o virtuale.
+                    _stato_attuatori[chiave_sede]['ac'] = 1 if (
+                        _stato_attuatori[chiave_sede]['ac'] or (ris_timer.get('timer_ac_minuti') or 0) > 0
+                    ) else 0
+                    _stato_attuatori[chiave_sede]['riscaldamento'] = 1 if (
+                        _stato_attuatori[chiave_sede]['riscaldamento'] or (ris_timer.get('timer_risc_minuti') or 0) > 0
+                    ) else 0
+                    _stato_attuatori[chiave_sede]['umidita'] = 1 if (
+                        _stato_attuatori[chiave_sede]['umidita'] or (ris_timer.get('timer_umid_minuti') or 0) > 0
+                    ) else 0
+
                     # ── Comando ML → ESP32 (SOLO twin fisico urbani/pievepelago) ──
                     # calcola_e_invia_comandi() è già stato chiamato più sopra
                     # (fast-path, appena arriva un dato interno) ma usa SOLO le
@@ -1257,6 +1277,18 @@ def vista_sede(nome_sede):
         if attuatori_iniziali is None:
             attuatori_iniziali = calcola_stato_attuatori(
                 ultimo_db.temp_int, ultimo_db.umid_int, ultimo_db.co2, cfg_iniziale)
+            # Stesso merge con l'output ML applicato nel loop MQTT (vedi on_message):
+            # senza questo, al riavvio del server il pannello "Sistemi attivi" mostra
+            # di nuovo solo le soglie fisse finché non arriva un nuovo messaggio.
+            attuatori_iniziali['ac'] = 1 if (
+                attuatori_iniziali['ac'] or (ultimo_db.timer_ac_minuti or 0) > 0
+            ) else 0
+            attuatori_iniziali['riscaldamento'] = 1 if (
+                attuatori_iniziali['riscaldamento'] or (ultimo_db.timer_risc_minuti or 0) > 0
+            ) else 0
+            attuatori_iniziali['umidita'] = 1 if (
+                attuatori_iniziali['umidita'] or (ultimo_db.timer_umid_minuti or 0) > 0
+            ) else 0
 
         # Stato di salute della sede ("Buona"/"Media"/"Cattiva"), stessa logica
         # di preferenza: stato live se già calcolato, altrimenti ricalcolato
