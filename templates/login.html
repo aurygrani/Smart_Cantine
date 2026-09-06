@@ -23,29 +23,38 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--bordeaux);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
             overflow: hidden;
+
+            /* Sfondo con immagine della vigna */
+            background-image: url('https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
         }
 
-        /* Texture stilizzata vite */
+        /* Velo scuro per far risaltare il riquadro di login */
         body::before {
             content: '';
             position: absolute;
             inset: 0;
-            background-image:
-                radial-gradient(ellipse 60% 80% at 15% 50%, rgba(114,36,62,0.35) 0%, transparent 70%),
-                radial-gradient(ellipse 40% 60% at 85% 20%, rgba(153,60,29,0.2) 0%, transparent 60%);
+            background: rgba(40, 15, 25, 0.6); /* Un bordeaux molto scuro e semitrasparente */
             pointer-events: none;
+            z-index: -1;
         }
+
+        /* Assicuriamoci che la card stia sopra al velo scuro */
+        .card {
+            z-index: 1;
+            /* ... il resto delle regole della card rimangono uguali ... */
 
         .card {
             position: relative;
-            background: var(--avorio);
+            background: var(--bordeaux);
             border-radius: 4px;
             padding: 3rem 3.5rem 2.5rem;
             width: 100%;
@@ -70,19 +79,21 @@
 
         .logo-area .brand {
             font-family: 'Cormorant Garamond', serif;
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--bordeaux);
-            letter-spacing: 0.04em;
+            font-size: 4.2rem;         /* Ingrandito da 2rem a 2.6rem */
+            font-weight: 700;          /* Reso ancora più marcato */
+            color: #2b0b1a;            /* Un bordeaux scurissimo, molto più cupo del normale */
+            letter-spacing: 0.02em;
+            line-height: 1.1;          /* Mantiene il testo compatto se lo schermo è piccolo */
             display: block;
         }
 
         .logo-area .subtitle {
-            font-size: 0.7rem;
-            letter-spacing: 0.22em;
+            font-size: 0.85rem;        /* Ingrandito da 0.7rem a 0.85rem */
+            letter-spacing: 0.18em;
             text-transform: uppercase;
-            color: var(--testo-soft);
-            margin-top: 0.25rem;
+            color: var(--bordeaux);       /* Reso più scuro */
+            margin-top: 0.4rem;
+            font-weight: 600;          /* Aggiunto grassetto al sottotitolo */
         }
 
         .divider {
@@ -94,11 +105,12 @@
 
         label {
             display: block;
-            font-size: 0.7rem;
-            letter-spacing: 0.16em;
+            font-size: 0.75rem;       /* Leggermente più grande */
+            font-weight: 700;         /* Aggiunto grassetto deciso per lo spessore */
+            letter-spacing: 0.12em;   /* Leggermente ridotto per bilanciare il grassetto */
             text-transform: uppercase;
-            color: var(--testo-soft);
-            margin-bottom: 0.4rem;
+            color: #FFFDD0; /* Scritta crema! */
+            margin-bottom: 0.5rem;
             margin-top: 1.25rem;
         }
 
@@ -155,9 +167,9 @@
 
         .footer-note {
             text-align: center;
-            margin-top: 2rem;
-            font-size: 0.72rem;
-            color: var(--testo-soft);
+            margin-top: 2.5rem;
+            font-size: 0.85rem;
+            color: var(--testo);
             letter-spacing: 0.06em;
         }
     </style>
