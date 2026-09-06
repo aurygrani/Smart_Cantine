@@ -139,7 +139,7 @@ SOGLIA_UMID_ALTA = 80.0  # %  → accende LED_UMIDITA
 SOGLIA_CO2_ALTA = 1000  # ppm → accende LED_CO2 + BUZZER
 
 
-def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=None):
+def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=None, cfg=None):
     """
     Calcola lo stato degli attuatori in base alle soglie e
     invia il comando all'ESP32 nel formato che si aspetta:
@@ -162,14 +162,27 @@ def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=Non
     quando la temperatura istantanea non ha ancora superato/ceduto la soglia
     fissa — prima questo override non esisteva e il consiglio ML restava
     solo un numero in dashboard, senza mai tradursi in un comando reale.
+
+    cfg: ConfigurazioneSede della sede (opzionale). Se presente, le soglie
+    usate sono quelle specifiche della sede (le stesse lette da
+    calcola_stato_attuatori() per il pannello dashboard), altrimenti si
+    ricade sulle soglie fisse globali. Prima di questa modifica la funzione
+    ignorava sempre `cfg` e usava solo le soglie fisse: il pannello
+    dashboard (che invece guarda cfg) e il comando reale mandato all'ESP32
+    potevano quindi finire per usare soglie diverse per la stessa sede.
     """
+    soglia_temp_alta  = cfg.soglia_temp_alta  if cfg and cfg.soglia_temp_alta  is not None else SOGLIA_TEMP_ALTA
+    soglia_temp_bassa = cfg.soglia_temp_bassa if cfg and cfg.soglia_temp_bassa is not None else SOGLIA_TEMP_BASSA
+    soglia_umid_alta  = cfg.soglia_umid_alta  if cfg and cfg.soglia_umid_alta  is not None else SOGLIA_UMID_ALTA
+    soglia_co2        = cfg.soglia_co2        if cfg and cfg.soglia_co2        is not None else SOGLIA_CO2_ALTA
+
     led_temp = 1 if (temp_int is not None and
-                      (temp_int > SOGLIA_TEMP_ALTA or temp_int < SOGLIA_TEMP_BASSA)) else 0
+                      (temp_int > soglia_temp_alta or temp_int < soglia_temp_bassa)) else 0
     if forza_temp is not None:
         led_temp = 1 if forza_temp else 0
-    led_umid = 1 if (umid_int is not None and umid_int > SOGLIA_UMID_ALTA) else 0
-    led_co2 = 1 if (co2 is not None and co2 > SOGLIA_CO2_ALTA) else 0
-    buzzer = 1 if (co2 is not None and co2 > SOGLIA_CO2_ALTA) else 0
+    led_umid = 1 if (umid_int is not None and umid_int > soglia_umid_alta) else 0
+    led_co2 = 1 if (co2 is not None and co2 > soglia_co2) else 0
+    buzzer = 1 if (co2 is not None and co2 > soglia_co2) else 0
 
     # Buzzer anche per temperatura critica (>30°C)
     if temp_int is not None and temp_int > 30.0:
@@ -782,12 +795,19 @@ def on_message(client, userdata, msg):
                 if 'umid_est' in payload: buffer_fusione['umid_est'] = payload['umid_est']
 
                 # Calcola e invia comandi agli attuatori ESP32 ogni volta che arriva un dato interno
+                # (cfg letta qui in un app_context dedicato: a questo punto del
+                # flusso il blocco ML/DB più sotto non è ancora partito, quindi
+                # senza questo context calcola_e_invia_comandi ricadrebbe
+                # sempre sulle soglie fisse globali invece di quelle della sede)
                 if 'temp_int' in payload or 'co2' in payload:
+                    with app.app_context():
+                        cfg_fast_path = get_config_sede(produttore, sede)
                     calcola_e_invia_comandi(
                         client,
                         buffer_fusione['temp_int'],
                         buffer_fusione['umid_int'],
-                        buffer_fusione['co2']
+                        buffer_fusione['co2'],
+                        cfg=cfg_fast_path
                     )
 
                 # Se non abbiamo ancora entrambi i sensori, aspettiamo
@@ -1010,7 +1030,8 @@ def on_message(client, userdata, msg):
                         )
                         calcola_e_invia_comandi(
                             client, temp_int, umid_int, valore_co2,
-                            forza_temp=temp_richiede_intervento_ml
+                            forza_temp=temp_richiede_intervento_ml,
+                            cfg=cfg
                         )
 
                     # Allarmi tradizionali
@@ -1044,6 +1065,38 @@ def on_message(client, userdata, msg):
                         # M2M (chiave_sede == "produttore/sede", stesso formato usato
                         # per l'evento CO2_ALTA_M2M), pronta a un nuovo allarme futuro.
                         _stato_allarme_co2_m2m.pop(chiave_sede, None)
+
+                    # ── Fascia di efficienza energetica: calcolo automatico ogni ciclo ──
+                    # Prima veniva calcolata SOLO su richiesta manuale (POST
+                    # /api/ml/fascia-efficienza): senza un salvataggio periodico non
+                    # esiste uno storico continuo da mettere in un grafico "andamento
+                    # nel tempo". La calcoliamo qui con la stessa media mobile (ultime
+                    # 20 letture già salvate) usata da quell'endpoint.
+                    ultime_per_fascia = (DatoSensore.query
+                                         .filter_by(produttore=produttore, sede=sede)
+                                         .order_by(DatoSensore.timestamp.desc())
+                                         .limit(20).all())
+                    temp_int_vals_fascia = [d.temp_int for d in ultime_per_fascia if d.temp_int is not None]
+                    temp_est_vals_fascia = [d.temp_est for d in ultime_per_fascia if d.temp_est is not None]
+                    if temp_int_vals_fascia and temp_est_vals_fascia:
+                        t_int_media_fascia = sum(temp_int_vals_fascia) / len(temp_int_vals_fascia)
+                        t_est_media_fascia = sum(temp_est_vals_fascia) / len(temp_est_vals_fascia)
+                        ris_fascia_auto = ml_fascia_efficienza(
+                            t_int_media_fascia, t_est_media_fascia,
+                            cfg.volume_m3, cfg.isolamento, produttore, sede
+                        )
+                        if ris_fascia_auto:
+                            db.session.add(FasciaEfficienza(
+                                produttore=produttore, sede=sede,
+                                fascia=ris_fascia_auto['fascia'],
+                                colore=ris_fascia_auto['colore'],
+                                score=ris_fascia_auto['score'],
+                                volume_cantina=cfg.volume_m3,
+                                valore_isolamento=cfg.isolamento,
+                                temp_int_media=t_int_media_fascia,
+                                temp_est_media=t_est_media_fascia,
+                                delta_temp=abs(t_int_media_fascia - t_est_media_fascia)
+                            ))
 
                     # Salva nel DB
                     db.session.add(DatoSensore(
@@ -1301,12 +1354,30 @@ def vista_sede(nome_sede):
                 ultimo_db.minuti_alla_soglia, ultimo_db.trend_vino_pendenza,
                 cfg=cfg_iniziale, fascia_efficienza=fascia_iniziale)
 
+    # Storico fascia di efficienza energetica per il grafico "isolamento nel
+    # tempo" — filtrato per QUESTA sede (a differenza di GET /api/ml/fascia-
+    # efficienza, che di default mescola tutte le sedi autorizzate insieme).
+    fasce_sede = (FasciaEfficienza.query
+                  .filter(FasciaEfficienza.sede == nome_sede,
+                          FasciaEfficienza.produttore.in_(autorizzati))
+                  .order_by(FasciaEfficienza.timestamp.desc()).limit(30).all())
+    fasce_sede_json = [{
+        'timestamp':      iso_utc(f.timestamp),
+        'fascia':         f.fascia,
+        'colore':         f.colore,
+        'score':          float(f.score) if f.score is not None else None,
+        'delta_temp':     float(f.delta_temp) if f.delta_temp is not None else None,
+        'temp_est_media': float(f.temp_est_media) if f.temp_est_media is not None else None,
+        'temp_int_media': float(f.temp_int_media) if f.temp_int_media is not None else None,
+    } for f in fasce_sede]
+
     return render_template('index.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
                            produttori_visibili=autorizzati, dati=dati_sede,
                            dati_json=dati_sede_json, sede=nome_sede,
                            attuatori=attuatori_iniziali,
-                           stato_sede=stato_sede_iniziale)
+                           stato_sede=stato_sede_iniziale,
+                           fasce_sede_json=fasce_sede_json)
 
 
 @app.route('/allerte-zona')
@@ -1497,9 +1568,14 @@ def api_ml_fascia():
             db.session.commit()
             return jsonify(ris)
         return jsonify({'error': 'Calcolo non riuscito'}), 500
-    fasce = (FasciaEfficienza.query
-             .filter(FasciaEfficienza.produttore.in_(autorizzati))
-             .order_by(FasciaEfficienza.timestamp.desc()).limit(20).all())
+    fasce_query = FasciaEfficienza.query.filter(FasciaEfficienza.produttore.in_(autorizzati))
+    prod_filtro = request.args.get('produttore')
+    sede_filtro = request.args.get('sede')
+    if prod_filtro:
+        fasce_query = fasce_query.filter(FasciaEfficienza.produttore == prod_filtro)
+    if sede_filtro:
+        fasce_query = fasce_query.filter(FasciaEfficienza.sede == sede_filtro)
+    fasce = fasce_query.order_by(FasciaEfficienza.timestamp.desc()).limit(20).all()
     return jsonify([{
         'produttore': f.produttore, 'sede': f.sede,
         'fascia': f.fascia, 'colore': f.colore,

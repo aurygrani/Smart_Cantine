@@ -936,6 +936,23 @@
     </div>
     {% endif %}
 
+    {% if fasce_sede_json %}
+    <div class="chart-card" style="margin-bottom:1.5rem;">
+        <p class="chart-title">Andamento fascia energetica — isolamento vs temperatura esterna</p>
+        <p class="ml-sub" style="margin:-0.3rem 0 0.6rem;">
+            Δ = |interna − esterna|: con buon isolamento resta alto anche quando fuori fa molto
+            freddo o molto caldo. Il colore di ogni punto è la fascia (🟢 A · 🟠 B · 🔴 C) di quel momento.
+        </p>
+        <div class="chart-legend">
+            <span class="lg-item" style="color:#2E6B8F"><span class="lg-swatch" style="background:#2E6B8F"></span>Δ interna−esterna (°C)</span>
+            <span class="lg-item" style="color:#993C1D"><span class="lg-swatch dashed" style="background:#993C1D"></span>Esterna media (°C)</span>
+        </div>
+        <div class="chart-wrap" style="height:160px;">
+            <canvas id="chartFascia"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Tabella storico -->
     <div class="history-card">
         <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
@@ -1121,6 +1138,40 @@ if (ultimoStorico && ultimoStorico.temp_vino_proiettata != null && pendenzaVino 
         }
     });
 }
+
+// ── GRAFICO: andamento fascia energetica (isolamento) ─────────────────────
+// Δ = |temp_int_media - temp_est_media| calcolato dal server su una media
+// mobile delle ultime 20 letture. Il colore di ogni punto riflette la fascia
+// (A/B/C) di quel momento, per vedere a colpo d'occhio quando l'isolamento
+// peggiora e se questo succede più col freddo o col caldo esterno.
+{% if fasce_sede_json %}
+const storiciFascia = {{ fasce_sede_json | reverse | list | tojson }};
+const labelsFascia   = storiciFascia.map(d => oraLocale(d.timestamp));
+const deltaTempData  = storiciFascia.map(d => d.delta_temp     != null ? parseFloat(d.delta_temp.toFixed(1))     : null);
+const tEstMediaData  = storiciFascia.map(d => d.temp_est_media != null ? parseFloat(d.temp_est_media.toFixed(1)) : null);
+const COLORI_FASCIA  = { 'A': '#1D9E75', 'B': '#BA7517', 'C': '#A32D2D' };
+const puntiColoreFascia = storiciFascia.map(d => COLORI_FASCIA[d.fascia] || '#999999');
+
+new Chart(document.getElementById('chartFascia'), {
+    type: 'line',
+    data: {
+        labels: labelsFascia,
+        datasets: [
+            { label: 'Δ interna−esterna (°C)', data: deltaTempData, borderColor: '#2E6B8F',
+              backgroundColor: 'rgba(46,107,143,0.08)', borderWidth: 2, tension: 0.3,
+              pointRadius: 4, pointBackgroundColor: puntiColoreFascia, pointBorderColor: puntiColoreFascia },
+            { label: 'Esterna media (°C)', data: tEstMediaData, borderColor: '#993C1D',
+              backgroundColor: 'rgba(153,60,29,0.05)', borderWidth: 1.5, borderDash: [4,3],
+              pointRadius: 1.5, tension: 0.3 }
+        ]
+    },
+    options: {
+        ...chartDefaults,
+        scales: { ...chartDefaults.scales,
+            y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: '#7A5C5C' } } }
+    }
+});
+{% endif %}
 
 const chartCO2 = new Chart(document.getElementById('chartCO2'), {
     type: 'bar',
