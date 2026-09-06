@@ -957,7 +957,7 @@
     <div class="history-card">
         <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
             Storico campionamenti
-            <span style="font-size:0.68rem; color:var(--testo-soft); font-weight:400; letter-spacing:0">
+            <span id="storico-count" style="font-size:0.68rem; color:var(--testo-soft); font-weight:400; letter-spacing:0">
                 ultime {{ dati | length }} righe
             </span>
         </div>
@@ -973,7 +973,7 @@
                     <th>Stato</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="storico-body">
                 {% for d in dati %}
                 <tr class="{% if d.allarme_co2 %}row-danger{% elif d.temp_vino_proiettata and d.temp_vino_proiettata > 24 %}row-warn{% endif %}">
                     <td>{{ d.timestamp | ora_locale }}</td>
@@ -1030,6 +1030,82 @@ function oraLocaleConSecondi(iso) {
     return new Date(iso).toLocaleTimeString('it-IT', {
         timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
+}
+// Stesso formato del filtro Jinja ora_locale() lato server (default '%d/%m %H:%M:%S'),
+// usata per costruire le righe nuove della tabella "Storico campionamenti" via JS,
+// così coincidono con quelle già renderizzate server-side al caricamento pagina.
+function formattaOraTabella(iso) {
+    if (!iso) return '';
+    const giornoMese = new Date(iso).toLocaleDateString('it-IT', {
+        timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit'
+    });
+    return `${giornoMese} ${oraLocaleConSecondi(iso)}`;
+}
+
+// Tiene traccia dell'ultimo campionamento già mostrato nella tabella "Storico
+// campionamenti", per evitare di inserire due volte la stessa riga quando
+// pollLive() (ogni 5s) interroga il server più spesso di quanto arrivino
+// nuovi dati dai sensori (circa ogni 10s). Inizializzata dalla riga più
+// recente già renderizzata server-side (dati_json[0], non invertito: qui
+// l'ordine è DESC, il più recente per primo — a differenza di 'storici' più
+// sotto, che è invertito apposta per i grafici).
+let ultimoTimestampTabella = {{ (dati_json[0].timestamp | tojson) if dati_json else 'null' }};
+
+// Costruisce l'HTML di una riga della tabella storico a partire da un dato
+// live (stesso formato di /api/sede/<sede>/latest), riproducendo ESATTAMENTE
+// le stesse classi/soglie/badge del blocco Jinja sopra — se cambi una soglia
+// lì, cambiala anche qui.
+function costruisciRigaStorico(d) {
+    const fmt1 = v => (v !== null && v !== undefined) ? parseFloat(v).toFixed(1) : '—';
+    const fmt0 = v => (v !== null && v !== undefined) ? parseFloat(v).toFixed(0) : '—';
+
+    const vinoCaldo = d.temp_vino_proiettata != null && d.temp_vino_proiettata > 24;
+
+    let classeRiga = '';
+    if (d.allarme_co2) classeRiga = 'row-danger';
+    else if (vinoCaldo) classeRiga = 'row-warn';
+
+    let classeTInt = '';
+    if (d.temp_int != null && d.temp_int > 24) classeTInt = 'cell-danger';
+    else if (d.temp_int != null && d.temp_int > 20) classeTInt = 'cell-warn';
+
+    let classeCO2 = '';
+    if (d.co2 != null && d.co2 > 1000) classeCO2 = 'cell-danger';
+    else if (d.co2 != null && d.co2 > 800) classeCO2 = 'cell-warn';
+
+    let badge;
+    if (d.allarme_co2) badge = '<span class="td-allarme danger">CO₂ alta</span>';
+    else if (vinoCaldo) badge = '<span class="td-allarme warn">Vino caldo</span>';
+    else badge = '<span class="td-allarme ok">OK</span>';
+
+    return `<tr class="${classeRiga}" data-ts="${d.timestamp}">
+        <td>${formattaOraTabella(d.timestamp)}</td>
+        <td class="${classeTInt}">${fmt1(d.temp_int)}</td>
+        <td>${fmt1(d.temp_est)}</td>
+        <td>${fmt0(d.umid_int)}</td>
+        <td class="${classeCO2}">${fmt0(d.co2)}</td>
+        <td class="${d.temp_vino_proiettata != null && d.temp_vino_proiettata > 24 ? 'cell-danger' : ''}">${fmt1(d.temp_vino_proiettata)}</td>
+        <td>${badge}</td>
+    </tr>`;
+}
+
+// Inserisce in cima alla tabella il campionamento appena arrivato (la tabella
+// mostra il più recente per primo, stesso ordine DESC usato server-side) e
+// tiene sempre e solo le ultime 20 righe, eliminando le più vecchie in coda.
+function aggiornaTabellaStorico(d) {
+    const tbody = document.getElementById('storico-body');
+    if (!tbody || !d || !d.timestamp) return;
+    if (d.timestamp === ultimoTimestampTabella) return; // nessun campionamento nuovo
+
+    ultimoTimestampTabella = d.timestamp;
+    tbody.insertAdjacentHTML('afterbegin', costruisciRigaStorico(d));
+
+    while (tbody.children.length > 20) {
+        tbody.removeChild(tbody.lastElementChild);
+    }
+
+    const contatore = document.getElementById('storico-count');
+    if (contatore) contatore.textContent = `ultime ${tbody.children.length} righe`;
 }
 
 {% if dati %}
@@ -1335,6 +1411,7 @@ async function pollLive() {
         aggiornaML(d); // aggiorna il pannello "Modelli ML" (timer, trend, minuti alla soglia)
         aggiornaSistemiAttivi(d.attuatori); // aggiorna il pannello "Sistemi attivi" (LED + buzzer)
         aggiornaStatoSede(d.stato_sede); // aggiorna il pannello "Stato della sede" (gauge + fattori)
+        aggiornaTabellaStorico(d); // aggiunge la riga più recente allo storico, tiene solo le ultime 20
 
         // Aggiorna timestamp
         if (d.timestamp) {
