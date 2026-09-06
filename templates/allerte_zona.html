@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comunicazioni M2M — SmartCantine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bordeaux:   #4A1B2E;
+            --bordeaux-md:#72243E;
+            --rame:       #993C1D;
+            --avorio:     #F5EFE0;
+            --avorio-md:  #EAE0CC;
+            --testo:      #1A0F0F;
+            --testo-soft: #7A5C5C;
+            --ok:         #1D9E75;
+            --warn:       #BA7517;
+            --danger:     #A32D2D;
+            --sidebar-w:  240px;
+        }
+
+        body { font-family: 'Inter', sans-serif; background: #F0EAD8; color: var(--testo); min-height: 100vh; display: flex; }
+
+        /* ── SIDEBAR (Stessa di hub e index) ── */
+        .sidebar { width: var(--sidebar-w); background: var(--bordeaux); min-height: 100vh; padding: 2rem 0; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 10; }
+        .sidebar .brand { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; color: var(--avorio); letter-spacing: 0.04em; padding: 0 1.5rem; line-height: 1.2; text-decoration: none; display: block; }
+        .sidebar .brand span { display: block; font-family: 'Inter', sans-serif; font-size: 0.62rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(245,239,224,0.5); margin-top: 0.2rem; }
+        .sidebar-divider { height: 1px; background: rgba(245,239,224,0.12); margin: 1.5rem 1.5rem; }
+        .sidebar-label { font-size: 0.62rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(245,239,224,0.4); padding: 0 1.5rem; margin-bottom: 0.5rem; }
+        .sidebar nav a { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1.5rem; text-decoration: none; font-size: 0.85rem; color: rgba(245,239,224,0.75); transition: background 0.15s, color 0.15s; border-left: 2px solid transparent; }
+        .sidebar nav a:hover, .sidebar nav a.active { background: rgba(245,239,224,0.08); color: var(--avorio); border-left-color: var(--rame); }
+        .sidebar nav a .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+
+        /* ── MAIN ── */
+        .main { margin-left: var(--sidebar-w); flex: 1; padding: 2.5rem 2.5rem 3rem; }
+        .page-title { font-family: 'Cormorant Garamond', serif; font-size: 2.2rem; font-weight: 600; color: var(--bordeaux); margin-bottom: 0.25rem; line-height: 1; }
+        .page-subtitle { font-size: 0.85rem; color: var(--testo-soft); margin-bottom: 2rem; }
+
+        /* ── LAYOUT M2M ── */
+        .m2m-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            height: calc(100vh - 150px);
+            min-height: 550px;
+        }
+
+        /* ── PANNELLO MAPPA / RETE (SINISTRA) ── */
+        .map-panel {
+            background: #2b0b1a; /* Tema scuro cantina */
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.4), 0 8px 24px rgba(74,27,46,0.15);
+            border: 1px solid #4A1B2E;
+            min-height: 0;
+        }
+
+        .map-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1.5rem;
+            z-index: 2;
+            flex-shrink: 0;
+        }
+
+        .map-title { color: var(--avorio); font-size: 0.9rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; }
+        .map-desc { color: #a0a0ab; font-size: 0.72rem; margin-top: 0.4rem; max-width: 260px; }
+
+        .toggle-group {
+            display: flex;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .toggle-btn {
+            background: transparent; border: none; color: #a0a0ab; padding: 0.6rem 1rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; cursor: pointer; transition: 0.2s;
+        }
+        .toggle-btn.active { background: rgba(255, 152, 0, 0.2); color: #FF9800; }
+        .toggle-btn:hover:not(.active) { background: rgba(255,255,255,0.1); color: #fff; }
+
+        /* Contenuto dei due pannelli (uno visibile alla volta) */
+        .panel-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+        /* ── GEO: griglia "meteo" per luogo fisico ── */
+        .weather-grid {
+            flex: 1;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 1rem;
+            align-content: start;
+            padding-right: 0.25rem;
+        }
+        .weather-card {
+            background: #181b1f;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 1rem 1.1rem;
+            position: relative;
+            transition: 0.3s;
+        }
+        .weather-card.anomalia {
+            border-color: var(--danger);
+            box-shadow: 0 0 18px rgba(163,45,45,0.35);
+        }
+        .weather-card h3 {
+            color: var(--avorio); font-size: 0.85rem; font-weight: 600;
+            letter-spacing: 0.03em; margin-bottom: 0.2rem; text-transform: capitalize;
+        }
+        .weather-media { color: #a0a0ab; font-size: 0.7rem; margin-bottom: 0.7rem; }
+        .weather-badge-alert {
+            position: absolute; top: 0.8rem; right: 0.9rem;
+            font-size: 0.62rem; color: var(--danger); font-weight: 600; letter-spacing: 0.03em;
+        }
+        .produttore-riga {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.4rem 0; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 0.78rem;
+        }
+        .produttore-riga:first-of-type { border-top: none; }
+        .produttore-nome { color: #d4d4d4; text-transform: capitalize; }
+        .produttore-temp { font-family: 'Fira Code', monospace; }
+        .produttore-temp.ok { color: #5DCAA5; }
+        .produttore-temp.sospetto { color: #F09595; font-weight: 600; }
+        .weather-empty { color: #a0a0ab; font-size: 0.8rem; padding: 1rem 0.2rem; }
+
+        /* ── PROD: rete nodi + grafico scambi reali ── */
+        #panel-prod { gap: 1rem; }
+        .prod-select-wrap { margin-bottom: 0.2rem; flex-shrink: 0; }
+        .prod-select-wrap label { color: #a0a0ab; font-size: 0.72rem; letter-spacing: 0.04em; }
+        .prod-select-wrap select {
+            background: #181b1f; color: var(--avorio); border: 1px solid #333; border-radius: 6px;
+            padding: 0.3rem 0.6rem; font-size: 0.75rem; margin-left: 0.4rem;
+        }
+
+        .prod-network { position: relative; flex: 1 1 55%; min-height: 170px; }
+        .network-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        .net-line { stroke: rgba(255,255,255,0.1); stroke-width: 2; fill: none; }
+        .net-line.active-int { stroke: #5DCAA5; stroke-dasharray: 8 8; animation: dash 20s linear infinite; opacity: 0.6; }
+        @keyframes dash { to { stroke-dashoffset: 1000; } }
+
+        .prod-node {
+            position: absolute; width: 78px; height: 78px;
+            background: #181b1f; border: 2px solid #4A1B2E; border-radius: 50%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 2; color: #fff; transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px rgba(0,0,0,0.5); transition: 0.3s; text-align: center; padding: 0.3rem;
+        }
+        .prod-node::before {
+            content: ''; position: absolute; inset: -6px; border-radius: 50%;
+            border: 1px dashed rgba(255,255,255,0.1); animation: spin 10s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .prod-node .node-icon { font-size: 1.1rem; }
+        .prod-node .node-name { font-size: 0.56rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; margin-top: 0.15rem; }
+        .prod-node .node-co2 { font-size: 0.62rem; color: #a0a0ab; font-family: 'Fira Code', monospace; margin-top: 0.1rem; }
+        .prod-node.stato-ok     { border-color: #5DCAA5; box-shadow: 0 0 18px rgba(93,202,165,0.3); }
+        .prod-node.stato-warn   { border-color: var(--warn);   box-shadow: 0 0 18px rgba(186,117,23,0.35); }
+        .prod-node.stato-danger { border-color: var(--danger); box-shadow: 0 0 18px rgba(163,45,45,0.4); }
+
+        .prod-chart-wrap { flex: 1 1 40%; min-height: 130px; background: rgba(0,0,0,0.15); border-radius: 10px; padding: 0.8rem; }
+        .prod-empty { color: #a0a0ab; font-size: 0.8rem; padding: 1rem 0.2rem; }
+
+        /* ── PANNELLO TERMINALE LOG (DESTRA) ── */
+        .log-panel {
+            background: #111; /* Vero nero da terminale */
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+
+        .log-header {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding-bottom: 1rem; border-bottom: 1px solid #333; margin-bottom: 1rem;
+        }
+        .log-header .dot { width: 10px; height: 10px; border-radius: 50%; }
+        .dot-red { background: #ff5f56; } .dot-yellow { background: #ffbd2e; } .dot-green { background: #27c93f; }
+        .log-title { color: #888; font-family: 'Fira Code', monospace; font-size: 0.75rem; letter-spacing: 0.1em; }
+
+        .terminal-window {
+            flex: 1;
+            overflow-y: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            color: #d4d4d4;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        /* Stili per i messaggi del log */
+        .msg { padding: 0.2rem 0; border-bottom: 1px dashed rgba(255,255,255,0.05); }
+        .msg-time { color: #569cd6; margin-right: 0.5rem; }
+        .msg-ext { color: #FF9800; font-weight: 500; }
+        .msg-int { color: #5DCAA5; font-weight: 500; }
+        .msg-alert { color: #F09595; background: rgba(163,45,45,0.2); padding: 0.2rem 0.5rem; border-radius: 4px; display: inline-block; }
+        .msg-ok { color: #c586c0; font-style: italic; }
+        .blink { animation: blinker 1s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
+
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <a href="/" class="brand">
+        SmartCantine
+        <span>Monitoraggio IoT</span>
+    </a>
+    <div class="sidebar-divider"></div>
+    <p class="sidebar-label">Sistema</p>
+    <nav>
+        <a href="/">📊 Dashboard</a>
+        <a href="/allerte-zona" class="active"><span class="dot" style="background:#FF9800"></span>📡 Comunicazioni M2M</a>
+    </nav>
+</aside>
+
+<main class="main">
+    <h1 class="page-title">Rete M2M & Sicurezza Distribuita</h1>
+    <p class="page-subtitle">Algoritmo di consenso distribuito per la rilevazione di anomalie hardware e manomissioni.</p>
+
+    <div class="m2m-layout">
+
+        <!-- PANNELLO SINISTRO: GEO (meteo) / PROD (rete privata) -->
+        <div class="map-panel">
+            <div class="map-header">
+                <div>
+                    <div class="map-title">Topologia di Rete</div>
+                    <div class="map-desc" id="map-desc">Confronto della temperatura esterna tra le cantine nello stesso luogo fisico, produttori diversi. Un twin che si scosta troppo dalla media di zona segnala un possibile sensore guasto.</div>
+                </div>
+                <div class="toggle-group">
+                    <button class="toggle-btn active" id="btn-geo" onclick="setMode('geo')">🌍 RETE GLOBALE (Meteo)</button>
+                    <button class="toggle-btn" id="btn-prod" onclick="setMode('prod')">🔒 RETE PRIVATA</button>
+                </div>
+            </div>
+
+            <!-- GEO: griglia di card, una per luogo fisico -->
+            <div class="panel-content" id="panel-geo">
+                <div class="weather-grid" id="weather-grid">
+                    <p class="weather-empty">Caricamento dati di zona…</p>
+                </div>
+            </div>
+
+            <!-- PROD: rete nodi (sedi dello stesso produttore) + grafico dati scambiati -->
+            <div class="panel-content" id="panel-prod" style="display:none;">
+                <div class="prod-select-wrap" id="prod-select-wrap" style="display:none;">
+                    <label>Produttore:
+                        <select id="prod-select"></select>
+                    </label>
+                </div>
+                <div class="prod-network" id="prod-network-area">
+                    <svg class="network-svg" id="prod-network-svg"></svg>
+                </div>
+                <div class="prod-chart-wrap">
+                    <canvas id="prod-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TERMINALE LOG -->
+        <div class="log-panel">
+            <div class="log-header">
+                <div class="dot dot-red"></div>
+                <div class="dot dot-yellow"></div>
+                <div class="dot dot-green"></div>
+                <div class="log-title">Server_Consensus_Engine_v2.1</div>
+            </div>
+            <div class="terminal-window" id="terminal">
+                <div class="msg"><span class="msg-time">[SYSTEM]</span> Inizializzazione protocollo M2M...</div>
+                <div class="msg"><span class="msg-time">[SYSTEM]</span> Connessione ai broker MQTT stabilita.</div>
+                <!-- I log reali vengono iniettati qui da JS, da /api/eventi-m2m/recenti -->
+            </div>
+        </div>
+
+    </div>
+</main>
+
+<script>
+    // --- STATO GLOBALE ---
+    let currentMode = 'geo';
+    const terminal = document.getElementById('terminal');
+    let ultimoIdEvento = 0;
+    let primoCaricoEventi = true;
+    let produttoreProdSelezionato = null;
+    let chartProd = null;
+
+    function formattaOra(iso) {
+        if (!iso) return '';
+        return new Date(iso).toLocaleTimeString('it-IT', {
+            timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+
+    // ── TOGGLE MODALITÀ ────────────────────────────────────────────────────────
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btn-geo').classList.toggle('active', mode === 'geo');
+        document.getElementById('btn-prod').classList.toggle('active', mode === 'prod');
+        document.getElementById('panel-geo').style.display = mode === 'geo' ? 'flex' : 'none';
+        document.getElementById('panel-prod').style.display = mode === 'prod' ? 'flex' : 'none';
+        document.getElementById('map-desc').textContent = mode === 'geo'
+            ? "Confronto della temperatura esterna tra le cantine nello stesso luogo fisico, produttori diversi. Un twin che si scosta troppo dalla media di zona segnala un possibile sensore guasto."
+            : "Le sedi dello stesso produttore si scambiano CO₂ e temperatura interna per allertarsi a vicenda e adattare le soglie di allarme.";
+    }
+
+    // ── PANNELLO GEO: griglia "meteo" per luogo fisico ─────────────────────────
+    // Dato pubblico (temperatura esterna): visibile a chiunque sia autenticato,
+    // indipendentemente dal produttore — vedi evento_m2m_visibile() lato server.
+    async function caricaGeo() {
+        try {
+            const res = await fetch('/api/geo/consenso');
+            if (!res.ok) return;
+            const zone = await res.json();
+            const grid = document.getElementById('weather-grid');
+
+            if (!zone.length) {
+                grid.innerHTML = '<p class="weather-empty">Nessun dato sufficiente per il consenso di zona (serve più di un produttore nello stesso luogo).</p>';
+                return;
+            }
+
+            grid.innerHTML = zone.map(z => `
+                <div class="weather-card ${z.anomalia ? 'anomalia' : ''}">
+                    ${z.anomalia ? '<span class="weather-badge-alert">⚠️ incoerenza</span>' : ''}
+                    <h3>📍 ${z.zona}</h3>
+                    <div class="weather-media">media zona: ${z.media_temp_est.toFixed(1)}°C</div>
+                    ${z.letture.map(l => `
+                        <div class="produttore-riga">
+                            <span class="produttore-nome">${l.produttore}</span>
+                            <span class="produttore-temp ${l.sospetto ? 'sospetto' : 'ok'}">
+                                ${l.temp_est.toFixed(1)}°C${l.sospetto ? ` (Δ${l.deviazione.toFixed(1)}°C)` : ''}
+                            </span>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+        } catch (e) { /* rete silenziosa, riprova al prossimo giro */ }
+    }
+
+    // ── PANNELLO PROD: rete nodi (sedi dello stesso produttore) + grafico ─────
+    async function caricaProd() {
+        try {
+            const res = await fetch('/api/prod/rete');
+            if (!res.ok) return;
+            const gruppi = await res.json();
+
+            const areaNodi = document.getElementById('prod-network-area');
+            if (!gruppi.length) {
+                areaNodi.querySelectorAll('.prod-node').forEach(n => n.remove());
+                areaNodi.insertAdjacentHTML('beforeend', '<p class="prod-empty">Nessuna sede associata al tuo produttore.</p>');
+                return;
+            }
+
+            // Selettore produttore — visibile solo se l'utente (admin) ne vede più di uno
+            const selWrap = document.getElementById('prod-select-wrap');
+            const sel = document.getElementById('prod-select');
+            if (gruppi.length > 1) {
+                selWrap.style.display = 'block';
+                if (sel.options.length !== gruppi.length) {
+                    sel.innerHTML = gruppi.map(g => `<option value="${g.produttore}">${g.produttore}</option>`).join('');
+                }
+                if (!produttoreProdSelezionato) produttoreProdSelezionato = gruppi[0].produttore;
+                sel.value = produttoreProdSelezionato;
+            } else {
+                selWrap.style.display = 'none';
+                produttoreProdSelezionato = gruppi[0].produttore;
+            }
+
+            const gruppo = gruppi.find(g => g.produttore === produttoreProdSelezionato) || gruppi[0];
+            disegnaReteProd(gruppo);
+            aggiornaChartProd(gruppo);
+        } catch (e) { /* rete silenziosa, riprova al prossimo giro */ }
+    }
+
+    document.getElementById('prod-select').addEventListener('change', (e) => {
+        produttoreProdSelezionato = e.target.value;
+        caricaProd();
+    });
+
+    function disegnaReteProd(gruppo) {
+        const area = document.getElementById('prod-network-area');
+        const svg  = document.getElementById('prod-network-svg');
+        const sedi = gruppo.sedi;
+        const n    = sedi.length;
+
+        area.querySelectorAll('.prod-node, .prod-empty').forEach(el => el.remove());
+        if (!n) return;
+
+        const cx = 50, cy = 50, r = 34;
+        const posizioni = [];
+        let nodiHtml = '';
+
+        sedi.forEach((s, i) => {
+            const angolo = -90 + i * (360 / n);
+            const rad = angolo * Math.PI / 180;
+            const top  = n === 1 ? cy : cy + r * Math.sin(rad);
+            const left = n === 1 ? cx : cx + r * Math.cos(rad);
+            posizioni.push({ top, left });
+
+            let stato = 'ok';
+            if (s.co2_attuale != null && s.soglia_co2) {
+                if (s.co2_attuale > s.soglia_co2) stato = 'danger';
+                else if (s.co2_attuale > s.soglia_co2 * 0.8) stato = 'warn';
+            }
+
+            nodiHtml += `
+                <div class="prod-node stato-${stato}" style="top:${top}%; left:${left}%;">
+                    <span class="node-icon">🍷</span>
+                    <span class="node-name">${s.sede}</span>
+                    <span class="node-co2">${s.co2_attuale != null ? Math.round(s.co2_attuale) + ' ppm' : '—'}</span>
+                </div>`;
+        });
+        area.insertAdjacentHTML('beforeend', nodiHtml);
+
+        let lineeHtml = '';
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                lineeHtml += `<line x1="${posizioni[i].left}%" y1="${posizioni[i].top}%" x2="${posizioni[j].left}%" y2="${posizioni[j].top}%" class="net-line active-int" />`;
+            }
+        }
+        svg.innerHTML = lineeHtml;
+    }
+
+    function aggiornaChartProd(gruppo) {
+        const ctx = document.getElementById('prod-chart');
+        const palette = ['#5DCAA5', '#FF9800', '#7AA6D9', '#C586C0', '#D9B45D'];
+        const datasets = gruppo.sedi.map((s, i) => ({
+            label: s.sede,
+            data: s.punti.map(p => p.co2),
+            borderColor: palette[i % palette.length],
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2,
+        }));
+        const labels = (gruppo.sedi[0]?.punti || []).map(p => formattaOra(p.timestamp));
+
+        if (!chartProd) {
+            chartProd = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#d4d4d4', font: { size: 10 }, boxWidth: 10 } },
+                        title: { display: true, text: 'CO₂ scambiata tra le sedi (ppm)', color: '#a0a0ab', font: { size: 10 } }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#a0a0ab', font: { size: 9 }, maxRotation: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        y: { ticks: { color: '#a0a0ab', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    }
+                }
+            });
+        } else {
+            chartProd.data.labels = labels;
+            chartProd.data.datasets = datasets;
+            chartProd.update('none');
+        }
+    }
+
+    // ── TERMINALE LOG: eventi M2M reali (polling, solo i nuovi dopo il primo carico) ──
+    function addLogEvento(e) {
+        const div = document.createElement('div');
+        div.className = 'msg';
+        const ora = formattaOra(e.timestamp);
+        const isAllarme = e.tipo === 'SENSORE_EST_SOSPETTO' || e.tipo === 'ALLERTA_CO2_PRODUTTORE';
+        const corpo = isAllarme
+            ? `<span class="msg-alert">${e.messaggio || e.tipo}</span>`
+            : `<span class="${e.pattern === 'GEO' ? 'msg-ext' : 'msg-int'}">[${e.pattern}]</span> ${e.messaggio || e.tipo}`;
+        div.innerHTML = `<span class="msg-time">[${ora}]</span> ${corpo}`;
+        terminal.appendChild(div);
+        terminal.scrollTop = terminal.scrollHeight;
+        if (terminal.children.length > 30) terminal.removeChild(terminal.firstChild);
+    }
+
+    async function caricaEventi() {
+        try {
+            const res = await fetch('/api/eventi-m2m/recenti');
+            if (!res.ok) return;
+            const eventi = await res.json();
+            const ordinati = [...eventi].sort((a, b) => a.id - b.id);
+            const daMostrare = primoCaricoEventi ? ordinati : ordinati.filter(e => e.id > ultimoIdEvento);
+            daMostrare.forEach(addLogEvento);
+            if (ordinati.length) ultimoIdEvento = ordinati[ordinati.length - 1].id;
+            primoCaricoEventi = false;
+        } catch (e) { /* rete silenziosa, riprova al prossimo giro */ }
+    }
+
+    // ── AVVIO ──────────────────────────────────────────────────────────────────
+    setMode('geo');
+    caricaGeo();
+    caricaProd();
+    caricaEventi();
+    setInterval(caricaGeo, 5000);
+    setInterval(caricaProd, 5000);
+    setInterval(caricaEventi, 5000);
+</script>
+</body>
+</html>

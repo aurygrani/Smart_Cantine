@@ -1380,13 +1380,15 @@ def vista_sede(nome_sede):
                            fasce_sede_json=fasce_sede_json)
 
 
-@app.route('/allerte-zona')
-@login_required
-def allerte_zona():
+def evento_m2m_visibile(e, autorizzati):
     """
-    Pagina che mostra le comunicazioni M2M tra twin — dimostra Legge 2 Vezzani.
+    Regola di visibilità per un EventoM2M, condivisa tra la pagina
+    /allerte-zona e le API JSON (/api/eventi-m2m/recenti) che la alimentano
+    in live polling — prima questa regola esisteva solo nella route della
+    pagina, quindi l'API restituiva SEMPRE tutti gli eventi PROD di TUTTI i
+    produttori a chiunque fosse autenticato, bypassando il filtro visibile
+    solo nell'HTML iniziale.
 
-    Regola di visibilità per i produttori (non-admin):
     - pattern 'GEO'  → consenso sulla temperatura ESTERNA tra twin della stessa
                         zona geografica, produttori diversi. È un dato pubblico/
                         ambientale (non riguarda l'interno della cantina di
@@ -1397,20 +1399,25 @@ def allerte_zona():
                         visibile solo se il produttore che lo ha generato è tra
                         quelli autorizzati per l'utente corrente.
     """
+    if e.pattern == 'GEO':
+        return True  # informazione esterna, condivisa per definizione
+    produttore_evento = (e.mittente or '').split('/')[0]
+    return produttore_evento in autorizzati
+
+
+@app.route('/allerte-zona')
+@login_required
+def allerte_zona():
+    """
+    Pagina che mostra le comunicazioni M2M tra twin — dimostra Legge 2 Vezzani.
+    Regole di visibilità: vedi evento_m2m_visibile().
+    """
     autorizzati = produttori_autorizzati()
     query = EventoM2M.query.order_by(EventoM2M.timestamp.desc()).limit(100)
     eventi = query.all()
 
     if (current_user.ruolo or '').strip().lower() != 'admin':
-        def visibile(e):
-            if e.pattern == 'GEO':
-                return True  # informazione esterna, condivisa per definizione
-            # Pattern 'PROD' (e simili, futuri): dato interno, mittente nel
-            # formato "produttore/sede" — verifichiamo che il produttore che
-            # ha generato l'evento sia uno di quelli dell'utente corrente.
-            produttore_evento = (e.mittente or '').split('/')[0]
-            return produttore_evento in autorizzati
-        eventi = [e for e in eventi if visibile(e)]
+        eventi = [e for e in eventi if evento_m2m_visibile(e, autorizzati)]
 
     return render_template('allerte_zona.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
@@ -1587,8 +1594,11 @@ def api_ml_fascia():
 @app.route('/api/eventi-m2m/recenti')
 @login_required
 def api_eventi_m2m():
+    autorizzati = produttori_autorizzati()
     eventi = (EventoM2M.query
               .order_by(EventoM2M.timestamp.desc()).limit(20).all())
+    if (current_user.ruolo or '').strip().lower() != 'admin':
+        eventi = [e for e in eventi if evento_m2m_visibile(e, autorizzati)]
     return jsonify([{
         'id': e.id, 'timestamp': iso_utc(e.timestamp),
         'pattern': e.pattern, 'tipo': e.tipo,
@@ -1596,6 +1606,100 @@ def api_eventi_m2m():
         'valore': float(e.valore) if e.valore is not None else None,
         'messaggio': e.messaggio,
     } for e in eventi])
+
+
+# Deve restare allineata a SOGLIA_DEVIAZIONE_EST in simulatore_cantine.py:
+# stessa soglia, calcolata qui "live" (istante per istante, dall'ultima
+# lettura nota) invece che solo quando il simulatore pubblica un nuovo
+# EventoM2M — così il pannello "meteo" si può disegnare subito, anche prima
+# che una deviazione superi la soglia e generi un evento storico.
+SOGLIA_GEO_DEVIAZIONE = 8.0
+
+
+@app.route('/api/geo/consenso')
+@login_required
+def api_geo_consenso():
+    """
+    Stato di consenso GEO in tempo reale: per ogni luogo fisico (zona), la
+    temperatura esterna più recente segnalata da ciascun produttore lì
+    presente, con media di zona e scarto di ciascuno dalla media.
+
+    Dato pubblico per definizione (temperatura esterna, non riguarda
+    l'interno di nessuna cantina — stessa regola di evento_m2m_visibile()
+    per pattern='GEO'): nessun filtro per produttore autorizzato, visibile a
+    chiunque sia autenticato, admin o produttore.
+    """
+    subq = (db.session.query(func.max(DatoSensore.id).label('max_id'))
+            .group_by(DatoSensore.produttore, DatoSensore.sede).subquery())
+    ultimi = (db.session.query(DatoSensore)
+              .join(subq, DatoSensore.id == subq.c.max_id).all())
+
+    per_luogo = {}
+    for d in ultimi:
+        if d.temp_est is None:
+            continue
+        per_luogo.setdefault(d.sede, []).append(d)
+
+    risultato = []
+    for luogo, letture in per_luogo.items():
+        if len(letture) < 2:
+            continue  # il consenso ha senso solo se c'è almeno un altro twin da confrontare
+        media = sum(l.temp_est for l in letture) / len(letture)
+        voci = []
+        for l in letture:
+            deviazione = abs(l.temp_est - media)
+            voci.append({
+                'produttore':  l.produttore,
+                'temp_est':    float(l.temp_est),
+                'deviazione':  round(deviazione, 2),
+                'sospetto':    deviazione > SOGLIA_GEO_DEVIAZIONE,
+                'timestamp':   iso_utc(l.timestamp),
+            })
+        voci.sort(key=lambda v: v['produttore'])
+        risultato.append({
+            'zona':            luogo,
+            'media_temp_est':  round(media, 2),
+            'letture':         voci,
+            'anomalia':        any(v['sospetto'] for v in voci),
+        })
+
+    risultato.sort(key=lambda r: r['zona'])
+    return jsonify(risultato)
+
+
+@app.route('/api/prod/rete')
+@login_required
+def api_prod_rete():
+    """
+    Stato "rete privata" (PROD) per il pannello interno di /allerte-zona:
+    per ciascun produttore autorizzato per l'utente corrente, le sue sedi
+    con una breve serie storica di CO₂ (per il grafico) — dato interno,
+    filtrato per produttore come il resto della dashboard.
+    """
+    autorizzati = produttori_autorizzati()
+    risultato = []
+    for prod in autorizzati:
+        sedi_nomi = sorted(s[0] for s in db.session.query(DatoSensore.sede)
+                            .filter(DatoSensore.produttore == prod)
+                            .distinct().all())
+        sedi = []
+        for sede in sedi_nomi:
+            cfg_sede = get_config_sede(prod, sede)
+            righe = (DatoSensore.query
+                     .filter_by(produttore=prod, sede=sede)
+                     .order_by(DatoSensore.timestamp.desc()).limit(20).all())
+            punti = [{
+                'timestamp': iso_utc(r.timestamp),
+                'co2':       float(r.co2) if r.co2 is not None else None,
+            } for r in reversed(righe)]
+            sedi.append({
+                'sede':        sede,
+                'co2_attuale': punti[-1]['co2'] if punti else None,
+                'soglia_co2':  cfg_sede.soglia_co2 if cfg_sede and cfg_sede.soglia_co2 is not None else SOGLIA_CO2_ALTA,
+                'punti':       punti,
+            })
+        risultato.append({'produttore': prod, 'sedi': sedi})
+    return jsonify(risultato)
 
 
 @app.route('/api/configurazione')
