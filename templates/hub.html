@@ -52,6 +52,84 @@
         .top-bar { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:1.5rem; }
         .top-bar h1 { font-family:'Cormorant Garamond',serif; font-size:2rem; font-weight:600; color:var(--bordeaux); line-height:1; }
         .top-bar .ts { font-size:0.75rem; color:var(--testo-soft); letter-spacing:0.06em; }
+        .top-bar-right { display:flex; align-items:center; gap:1rem; }
+
+        .settings-btn {
+            display: flex; align-items: center; gap: 0.4rem;
+            background: #fff; border: 1px solid var(--avorio-md);
+            color: var(--bordeaux); font-family: 'Inter', sans-serif;
+            font-size: 0.78rem; font-weight: 500; letter-spacing: 0.02em;
+            padding: 0.5rem 0.9rem; border-radius: 8px; cursor: pointer;
+            transition: background .15s, border-color .15s;
+        }
+        .settings-btn:hover { background: var(--avorio); border-color: var(--bordeaux-md); }
+
+        /* ── MODALE IMPOSTAZIONI / RICHIESTA CANTINA ── */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 200;
+            background: rgba(26,15,15,0.45);
+            align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: #fff; border-radius: var(--r); width: 100%; max-width: 420px;
+            padding: 1.75rem; box-shadow: 0 20px 60px rgba(26,15,15,0.3);
+        }
+        .modal-box h2 {
+            font-family: 'Cormorant Garamond', serif; font-size: 1.4rem;
+            color: var(--bordeaux); margin-bottom: 0.3rem;
+        }
+        .modal-box .modal-sub { font-size: 0.8rem; color: var(--testo-soft); margin-bottom: 1.25rem; }
+        .modal-field { margin-bottom: 1rem; }
+        .modal-field label {
+            display: block; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--testo-soft); margin-bottom: 0.35rem;
+        }
+        .modal-field input, .modal-field textarea {
+            width: 100%; font-family: 'Inter', sans-serif; font-size: 0.85rem;
+            padding: 0.55rem 0.7rem; border: 1px solid var(--avorio-md); border-radius: 7px;
+            background: #FDFAF4; color: var(--testo); resize: vertical;
+        }
+        .modal-field input:focus, .modal-field textarea:focus { outline: none; border-color: var(--bordeaux-md); }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.5rem; }
+        .modal-btn {
+            font-size: 0.8rem; font-weight: 500; padding: 0.55rem 1.1rem;
+            border-radius: 7px; cursor: pointer; border: none;
+        }
+        .modal-btn.secondary { background: var(--avorio); color: var(--testo-soft); }
+        .modal-btn.primary { background: var(--bordeaux); color: var(--avorio); }
+        .modal-btn.primary:hover { background: var(--bordeaux-md); }
+        .modal-btn:disabled { opacity: 0.6; cursor: default; }
+        .modal-msg { font-size: 0.78rem; margin-top: 0.9rem; padding: 0.6rem 0.8rem; border-radius: 7px; display: none; }
+        .modal-msg.ok    { display: block; background: var(--ok-bg);    color: var(--ok); }
+        .modal-msg.err   { display: block; background: var(--danger-bg); color: var(--danger); }
+
+        /* ── TAB RICHIESTE CANTINE (admin) ── */
+        .richieste-list { display: flex; flex-direction: column; gap: 0.75rem; }
+        .richiesta-card {
+            background: #FDFAF4; border: 1px solid var(--avorio-md); border-radius: var(--r);
+            padding: 0.9rem 1.1rem; display: flex; justify-content: space-between; gap: 1rem;
+            align-items: flex-start;
+        }
+        .richiesta-card.gestita { opacity: 0.55; }
+        .richiesta-card .rc-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; flex-wrap: wrap; }
+        .richiesta-card .rc-nome { font-family:'Cormorant Garamond',serif; font-weight:600; font-size:1.05rem; color:var(--bordeaux); }
+        .richiesta-card .rc-prod {
+            font-size: 0.6rem; letter-spacing:0.12em; text-transform:uppercase;
+            background: var(--bordeaux); color: var(--avorio); padding: 0.15rem 0.5rem; border-radius: 4px;
+        }
+        .richiesta-card .rc-meta { font-size: 0.72rem; color: var(--testo-soft); margin-bottom: 0.3rem; }
+        .richiesta-card .rc-note { font-size: 0.8rem; color: var(--testo); }
+        .richiesta-card .rc-actions { flex-shrink: 0; }
+        .rc-toggle-btn {
+            font-size: 0.7rem; font-weight: 500; padding: 0.35rem 0.7rem; border-radius: 6px;
+            border: 1px solid var(--avorio-md); background: #fff; color: var(--testo-soft); cursor: pointer;
+        }
+        .rc-toggle-btn:hover { border-color: var(--bordeaux-md); color: var(--bordeaux); }
+        .tab-badge {
+            background: var(--danger); color: #fff; font-size: 0.62rem; font-weight: 600;
+            padding: 0.05rem 0.4rem; border-radius: 99px; margin-left: 0.2rem;
+        }
 
         /* ── KPI ── */
         .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:1.5rem; }
@@ -262,7 +340,7 @@
 
 <aside class="sidebar">
     <div class="brand">
-        SmartCantine
+        Cantine Urbani
         <span>Monitoraggio IoT</span>
     </div>
     <div class="sidebar-divider"></div>
@@ -294,7 +372,12 @@
 <main class="main">
     <div class="top-bar">
         <h1>{% if ruolo == "admin" %}Panoramica cantine{% else %}Cantine {{ ruolo | capitalize }}{% endif %}</h1>
-        <span class="ts" id="ora-corrente"></span>
+        <div class="top-bar-right">
+            {% if ruolo != "admin" %}
+            <button class="settings-btn" onclick="apriModaleImpostazioni()">⚙️ Impostazioni</button>
+            {% endif %}
+            <span class="ts" id="ora-corrente"></span>
+        </div>
     </div>
 
     <!-- KPI -->
@@ -333,6 +416,11 @@
             <button class="tab-btn" onclick="apriTab('grafici', this)">
                 📈 Cruscotti
             </button>
+            {% if ruolo == "admin" %}
+            <button class="tab-btn" onclick="apriTab('richieste', this)">
+                🔔 Richieste cantine<span id="richieste-badge"></span>
+            </button>
+            {% endif %}
         </div>
 
         <!-- TAB 1: SEDI -->
@@ -340,8 +428,7 @@
             {% if dati_sedi %}
             <div class="sedi-grid">
                 {% for item in dati_sedi %}
-                <!-- CAMBIA QUESTA RIGA: -->
-                <a class="sede-card" href="/sede/{{ item.sede }}?prod={{ item.produttore }}" data-prod="{{ item.produttore }}">
+                <a class="sede-card" href="/sede/{{ item.sede }}" data-prod="{{ item.produttore }}">
                     <div class="sede-card-header">
                         <span class="sede-nome">{{ item.sede | capitalize }}</span>
                         <span class="produttore-badge">{{ item.produttore }}</span>
@@ -447,8 +534,52 @@
                 </div>
             </div>
         </div>
+
+        {% if ruolo == "admin" %}
+        <!-- TAB 4: RICHIESTE CANTINE (solo admin) -->
+        <div id="tab-richieste" class="tab-content">
+            <div class="log-header">
+                <span class="log-title">Richieste di nuove cantine dai produttori</span>
+                <span class="live-dot">Live</span>
+            </div>
+            <div class="richieste-list" id="richieste-list">
+                <div style="text-align:center; padding:2rem; color:var(--testo-soft); font-size:0.82rem;">
+                    ⏳ Caricamento richieste…
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </main>
+
+{% if ruolo != "admin" %}
+<!-- MODALE IMPOSTAZIONI — Richiesta nuova cantina -->
+<div class="modal-overlay" id="modal-impostazioni">
+    <div class="modal-box">
+        <h2>Impostazioni</h2>
+        <p class="modal-sub">Richiedi l'aggiunta di una nuova cantina al consorzio {{ ruolo | capitalize }}. La richiesta arriverà all'amministratore.</p>
+        <form id="form-richiesta-cantina" onsubmit="return inviaRichiestaCantina(event)">
+            <div class="modal-field">
+                <label for="rc-nome">Nome della cantina *</label>
+                <input type="text" id="rc-nome" required placeholder="es. Cantina Serramazzoni">
+            </div>
+            <div class="modal-field">
+                <label for="rc-localita">Località</label>
+                <input type="text" id="rc-localita" placeholder="es. Serramazzoni (MO)">
+            </div>
+            <div class="modal-field">
+                <label for="rc-note">Note per l'amministratore</label>
+                <textarea id="rc-note" rows="3" placeholder="Dettagli aggiuntivi (opzionale)"></textarea>
+            </div>
+            <div class="modal-msg" id="rc-msg"></div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="chiudiModaleImpostazioni()">Annulla</button>
+                <button type="submit" class="modal-btn primary" id="rc-submit-btn">Invia richiesta</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 <!-- ALARM BANNER -->
 <div id="alarm-banner" style="display:none; position:fixed; bottom:1.5rem; right:1.5rem; z-index:100;
@@ -484,10 +615,133 @@ function apriTab(nome, btn) {
     btn.classList.add('active');
     if (nome === 'grafici') renderGrafici();
     if (nome === 'log' && logBuffer.length === 0) caricaLogIniziale();
+    if (nome === 'richieste') caricaRichiesteCantine();
+}
+
+// ── IMPOSTAZIONI / RICHIESTA NUOVA CANTINA (lato produttore) ──────────────────
+function apriModaleImpostazioni() {
+    const overlay = document.getElementById('modal-impostazioni');
+    if (!overlay) return;
+    document.getElementById('rc-msg').className = 'modal-msg';
+    document.getElementById('rc-msg').textContent = '';
+    overlay.classList.add('open');
+}
+
+function chiudiModaleImpostazioni() {
+    const overlay = document.getElementById('modal-impostazioni');
+    if (overlay) overlay.classList.remove('open');
+}
+
+async function inviaRichiestaCantina(ev) {
+    ev.preventDefault();
+    const msgEl = document.getElementById('rc-msg');
+    const btn = document.getElementById('rc-submit-btn');
+    const nome = document.getElementById('rc-nome').value.trim();
+    const localita = document.getElementById('rc-localita').value.trim();
+    const note = document.getElementById('rc-note').value.trim();
+
+    if (!nome) return false;
+
+    btn.disabled = true;
+    btn.textContent = 'Invio…';
+    msgEl.className = 'modal-msg';
+
+    try {
+        const res = await fetch('/api/richieste-cantine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome_cantina: nome, localita, note })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            msgEl.className = 'modal-msg ok';
+            msgEl.textContent = '✓ Richiesta inviata. L\'amministratore la vedrà a breve.';
+            document.getElementById('form-richiesta-cantina').reset();
+            setTimeout(chiudiModaleImpostazioni, 1600);
+        } else {
+            msgEl.className = 'modal-msg err';
+            msgEl.textContent = data.error || 'Errore durante l\'invio della richiesta.';
+        }
+    } catch (e) {
+        msgEl.className = 'modal-msg err';
+        msgEl.textContent = 'Errore di connessione. Riprova.';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Invia richiesta';
+    }
+    return false;
+}
+
+// ── RICHIESTE CANTINE (lato admin) ─────────────────────────────────────────────
+async function caricaRichiesteCantine() {
+    const el = document.getElementById('richieste-list');
+    if (!el) return;
+    try {
+        const res = await fetch('/api/richieste-cantine');
+        if (!res.ok) return;
+        const richieste = await res.json();
+        renderRichiesteCantine(richieste);
+    } catch (e) {}
+}
+
+function renderRichiesteCantine(richieste) {
+    const el = document.getElementById('richieste-list');
+    const badge = document.getElementById('richieste-badge');
+    if (!el) return;
+
+    const inAttesa = richieste.filter(r => r.stato !== 'gestita').length;
+    if (badge) badge.innerHTML = inAttesa > 0 ? `<span class="tab-badge">${inAttesa}</span>` : '';
+
+    if (!richieste.length) {
+        el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--testo-soft);font-size:0.82rem">Nessuna richiesta ricevuta</div>';
+        return;
+    }
+
+    el.innerHTML = richieste.map(r => {
+        const data = r.timestamp ? new Date(r.timestamp).toLocaleString('it-IT', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+        const gestita = r.stato === 'gestita';
+        return `<div class="richiesta-card ${gestita ? 'gestita' : ''}">
+            <div>
+                <div class="rc-head">
+                    <span class="rc-nome">${escapeHtml(r.nome_cantina)}</span>
+                    <span class="rc-prod">${escapeHtml(r.produttore)}</span>
+                    ${gestita ? '<span class="badge ok">Gestita</span>' : '<span class="badge warn">In attesa</span>'}
+                </div>
+                <div class="rc-meta">
+                    ${r.localita ? `📍 ${escapeHtml(r.localita)} · ` : ''}
+                    richiesto da <strong>${escapeHtml(r.richiesto_da || '—')}</strong> · ${data}
+                </div>
+                ${r.note ? `<div class="rc-note">${escapeHtml(r.note)}</div>` : ''}
+            </div>
+            <div class="rc-actions">
+                <button class="rc-toggle-btn" onclick="toggleStatoRichiesta(${r.id}, '${gestita ? 'in_attesa' : 'gestita'}')">
+                    ${gestita ? '↺ Riapri' : '✓ Segna come gestita'}
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function toggleStatoRichiesta(id, nuovoStato) {
+    try {
+        await fetch(`/api/richieste-cantine/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stato: nuovoStato })
+        });
+        caricaRichiesteCantine();
+    } catch (e) {}
+}
+
+function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : str;
+    return d.innerHTML;
 }
 
 // ── DATI DA JINJA ─────────────────────────────────────────────────────────────
 const DATI_SEDI = {{ dati_sedi | tojson }};
+const RUOLO = {{ ruolo | tojson }};
 
 // ── LOG STREAM ────────────────────────────────────────────────────────────────
 const logBuffer = [];  // buffer locale degli ultimi 200 eventi
@@ -935,6 +1189,12 @@ setTimeout(pollAllarmi,    1500);
 setTimeout(pollDati,       3000);
 setTimeout(pollEventiM2M,  6000);
 setTimeout(pollML,         8000);
+
+// Per l'admin: aggiorna il badge "Richieste cantine" anche senza aprire la tab
+if (RUOLO === 'admin') {
+    setInterval(caricaRichiesteCantine, 20000);
+    setTimeout(caricaRichiesteCantine, 2000);
+}
 </script>
 </body>
 </html>
