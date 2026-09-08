@@ -71,10 +71,9 @@
             align-items: center; justify-content: center;
         }
         .modal-overlay.open { display: flex; }
-        .modal-box {
-            background: #fff; border-radius: var(--r); width: 100%; max-width: 420px;
-            padding: 1.75rem; box-shadow: 0 20px 60px rgba(26,15,15,0.3);
-        }
+        .modal-box { background: #fff; border-radius: var(--r); width: 100%; max-width: 420px;
+            padding: 1.75rem; box-shadow: 0 20px 60px rgba(26,15,15,0.3); }
+        .modal-box.modal-box-wide { max-width: 520px; max-height: 85vh; overflow-y: auto; }
         .modal-box h2 {
             font-family: 'Cormorant Garamond', serif; font-size: 1.4rem;
             color: var(--bordeaux); margin-bottom: 0.3rem;
@@ -91,6 +90,23 @@
             background: #FDFAF4; color: var(--testo); resize: vertical;
         }
         .modal-field input:focus, .modal-field textarea:focus { outline: none; border-color: var(--bordeaux-md); }
+        .modal-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+        .modal-divider { height: 1px; background: var(--avorio-md); margin: 1.25rem 0 1.1rem; }
+
+        .contatti-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 260px; overflow-y: auto; margin-bottom: 0.25rem; }
+        .contatto-card {
+            background: #FDFAF4; border: 1px solid var(--avorio-md); border-radius: 8px;
+            padding: 0.65rem 0.85rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+        }
+        .contatto-card .ct-nome { font-weight: 500; font-size: 0.85rem; color: var(--bordeaux); }
+        .contatto-card .ct-ruolo { font-size: 0.7rem; color: var(--testo-soft); margin-top: 0.1rem; }
+        .contatto-card .ct-dettagli { font-size: 0.72rem; color: var(--testo-soft); margin-top: 0.2rem; }
+        .contatto-card .ct-dettagli a { color: var(--rame); text-decoration: none; }
+        .ct-delete-btn {
+            flex-shrink: 0; background: none; border: none; color: var(--testo-soft);
+            cursor: pointer; font-size: 0.9rem; padding: 0.2rem 0.4rem; border-radius: 5px;
+        }
+        .ct-delete-btn:hover { color: var(--danger); background: var(--danger-bg); }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.5rem; }
         .modal-btn {
             font-size: 0.8rem; font-weight: 500; padding: 0.55rem 1.1rem;
@@ -374,7 +390,8 @@
         <h1>{% if ruolo == "admin" %}Panoramica cantine{% else %}Cantine {{ ruolo | capitalize }}{% endif %}</h1>
         <div class="top-bar-right">
             {% if ruolo != "admin" %}
-            <button class="settings-btn" onclick="apriModaleImpostazioni()">⚙️ Impostazioni</button>
+            <button class="settings-btn" onclick="apriModaleCantina()">🏭 Aggiungi cantina</button>
+            <button class="settings-btn" onclick="apriModaleContatti()">👥 Contatti</button>
             {% endif %}
             <span class="ts" id="ora-corrente"></span>
         </div>
@@ -553,10 +570,10 @@
 </main>
 
 {% if ruolo != "admin" %}
-<!-- MODALE IMPOSTAZIONI — Richiesta nuova cantina -->
-<div class="modal-overlay" id="modal-impostazioni">
+<!-- MODALE AGGIUNGI CANTINA — Richiesta nuova cantina -->
+<div class="modal-overlay" id="modal-cantina">
     <div class="modal-box">
-        <h2>Impostazioni</h2>
+        <h2>Aggiungi cantina</h2>
         <p class="modal-sub">Richiedi l'aggiunta di una nuova cantina al consorzio {{ ruolo | capitalize }}. La richiesta arriverà all'amministratore.</p>
         <form id="form-richiesta-cantina" onsubmit="return inviaRichiestaCantina(event)">
             <div class="modal-field">
@@ -573,8 +590,50 @@
             </div>
             <div class="modal-msg" id="rc-msg"></div>
             <div class="modal-actions">
-                <button type="button" class="modal-btn secondary" onclick="chiudiModaleImpostazioni()">Annulla</button>
+                <button type="button" class="modal-btn secondary" onclick="chiudiModaleCantina()">Annulla</button>
                 <button type="submit" class="modal-btn primary" id="rc-submit-btn">Invia richiesta</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODALE CONTATTI — Rubrica del consorzio -->
+<div class="modal-overlay" id="modal-contatti">
+    <div class="modal-box modal-box-wide">
+        <h2>Contatti — {{ ruolo | capitalize }}</h2>
+        <p class="modal-sub">Rubrica delle colleghe e dei colleghi del tuo consorzio.</p>
+
+        <div class="contatti-list" id="contatti-list">
+            <div style="text-align:center; padding:1.5rem; color:var(--testo-soft); font-size:0.82rem;">⏳ Caricamento contatti…</div>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <form id="form-contatto" onsubmit="return aggiungiContatto(event)">
+            <div class="modal-field-row">
+                <div class="modal-field">
+                    <label for="ct-nome">Nome *</label>
+                    <input type="text" id="ct-nome" required placeholder="es. Giulia Rossi">
+                </div>
+                <div class="modal-field">
+                    <label for="ct-ruolo">Ruolo</label>
+                    <input type="text" id="ct-ruolo" placeholder="es. Responsabile sede Carpi">
+                </div>
+            </div>
+            <div class="modal-field-row">
+                <div class="modal-field">
+                    <label for="ct-email">Email</label>
+                    <input type="email" id="ct-email" placeholder="nome@esempio.it">
+                </div>
+                <div class="modal-field">
+                    <label for="ct-telefono">Telefono</label>
+                    <input type="text" id="ct-telefono" placeholder="333 1234567">
+                </div>
+            </div>
+            <div class="modal-msg" id="ct-msg"></div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="chiudiModaleContatti()">Chiudi</button>
+                <button type="submit" class="modal-btn primary" id="ct-submit-btn">Aggiungi contatto</button>
             </div>
         </form>
     </div>
@@ -618,17 +677,17 @@ function apriTab(nome, btn) {
     if (nome === 'richieste') caricaRichiesteCantine();
 }
 
-// ── IMPOSTAZIONI / RICHIESTA NUOVA CANTINA (lato produttore) ──────────────────
-function apriModaleImpostazioni() {
-    const overlay = document.getElementById('modal-impostazioni');
+// ── AGGIUNGI CANTINA — richiesta nuova cantina (lato produttore) ──────────────
+function apriModaleCantina() {
+    const overlay = document.getElementById('modal-cantina');
     if (!overlay) return;
     document.getElementById('rc-msg').className = 'modal-msg';
     document.getElementById('rc-msg').textContent = '';
     overlay.classList.add('open');
 }
 
-function chiudiModaleImpostazioni() {
-    const overlay = document.getElementById('modal-impostazioni');
+function chiudiModaleCantina() {
+    const overlay = document.getElementById('modal-cantina');
     if (overlay) overlay.classList.remove('open');
 }
 
@@ -657,7 +716,7 @@ async function inviaRichiestaCantina(ev) {
             msgEl.className = 'modal-msg ok';
             msgEl.textContent = '✓ Richiesta inviata. L\'amministratore la vedrà a breve.';
             document.getElementById('form-richiesta-cantina').reset();
-            setTimeout(chiudiModaleImpostazioni, 1600);
+            setTimeout(chiudiModaleCantina, 1600);
         } else {
             msgEl.className = 'modal-msg err';
             msgEl.textContent = data.error || 'Errore durante l\'invio della richiesta.';
@@ -670,6 +729,100 @@ async function inviaRichiestaCantina(ev) {
         btn.textContent = 'Invia richiesta';
     }
     return false;
+}
+
+// ── CONTATTI — rubrica del consorzio (lato produttore) ─────────────────────────
+function apriModaleContatti() {
+    const overlay = document.getElementById('modal-contatti');
+    if (!overlay) return;
+    document.getElementById('ct-msg').className = 'modal-msg';
+    document.getElementById('ct-msg').textContent = '';
+    overlay.classList.add('open');
+    caricaContatti();
+}
+
+function chiudiModaleContatti() {
+    const overlay = document.getElementById('modal-contatti');
+    if (overlay) overlay.classList.remove('open');
+}
+
+async function caricaContatti() {
+    const el = document.getElementById('contatti-list');
+    if (!el) return;
+    try {
+        const res = await fetch('/api/contatti');
+        if (!res.ok) return;
+        const contatti = await res.json();
+        renderContatti(contatti);
+    } catch (e) {}
+}
+
+function renderContatti(contatti) {
+    const el = document.getElementById('contatti-list');
+    if (!el) return;
+    if (!contatti.length) {
+        el.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--testo-soft);font-size:0.82rem">Nessun contatto ancora salvato</div>';
+        return;
+    }
+    el.innerHTML = contatti.map(c => {
+        const dettagli = [];
+        if (c.email) dettagli.push(`<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>`);
+        if (c.telefono) dettagli.push(escapeHtml(c.telefono));
+        return `<div class="contatto-card">
+            <div>
+                <div class="ct-nome">${escapeHtml(c.nome)}</div>
+                ${c.ruolo_persona ? `<div class="ct-ruolo">${escapeHtml(c.ruolo_persona)}</div>` : ''}
+                ${dettagli.length ? `<div class="ct-dettagli">${dettagli.join(' · ')}</div>` : ''}
+            </div>
+            <button class="ct-delete-btn" title="Elimina contatto" onclick="eliminaContatto(${c.id})">✕</button>
+        </div>`;
+    }).join('');
+}
+
+async function aggiungiContatto(ev) {
+    ev.preventDefault();
+    const msgEl = document.getElementById('ct-msg');
+    const btn = document.getElementById('ct-submit-btn');
+    const nome = document.getElementById('ct-nome').value.trim();
+    const ruolo_persona = document.getElementById('ct-ruolo').value.trim();
+    const email = document.getElementById('ct-email').value.trim();
+    const telefono = document.getElementById('ct-telefono').value.trim();
+
+    if (!nome) return false;
+
+    btn.disabled = true;
+    btn.textContent = 'Salvataggio…';
+    msgEl.className = 'modal-msg';
+
+    try {
+        const res = await fetch('/api/contatti', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome, ruolo_persona, email, telefono })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            document.getElementById('form-contatto').reset();
+            caricaContatti();
+        } else {
+            msgEl.className = 'modal-msg err';
+            msgEl.textContent = data.error || 'Errore durante il salvataggio.';
+        }
+    } catch (e) {
+        msgEl.className = 'modal-msg err';
+        msgEl.textContent = 'Errore di connessione. Riprova.';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Aggiungi contatto';
+    }
+    return false;
+}
+
+async function eliminaContatto(id) {
+    try {
+        await fetch(`/api/contatti/${id}`, { method: 'DELETE' });
+        caricaContatti();
+    } catch (e) {}
 }
 
 // ── RICHIESTE CANTINE (lato admin) ─────────────────────────────────────────────
