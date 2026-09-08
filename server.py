@@ -1649,23 +1649,32 @@ def api_geo_consenso():
     for luogo, letture in per_luogo.items():
         if len(letture) < 2:
             continue  # il consenso ha senso solo se c'è almeno un altro twin da confrontare
-        media = sum(l.temp_est for l in letture) / len(letture)
+
+        media_temp = sum(l.temp_est for l in letture) / len(letture)
+
         voci = []
         for l in letture:
-            deviazione = abs(l.temp_est - media)
+            deviazione = abs(l.temp_est - media_temp)
             voci.append({
-                'produttore':  l.produttore,
-                'temp_est':    float(l.temp_est),
-                'deviazione':  round(deviazione, 2),
-                'sospetto':    deviazione > SOGLIA_GEO_DEVIAZIONE,
-                'timestamp':   iso_utc(l.timestamp),
+                'produttore': l.produttore,
+                'temp_est': float(l.temp_est),
+                'umid_est': float(l.umid_est) if l.umid_est is not None else None,
+                'deviazione': round(deviazione, 2),
+                'sospetto': deviazione > SOGLIA_GEO_DEVIAZIONE,
+                'timestamp': iso_utc(l.timestamp),
             })
         voci.sort(key=lambda v: v['produttore'])
+
+        # Calcolo anche la media dell'umidità per la zona
+        umid_valide = [v['umid_est'] for v in voci if v['umid_est'] is not None]
+        media_umid = sum(umid_valide) / len(umid_valide) if umid_valide else None
+
         risultato.append({
-            'zona':            luogo,
-            'media_temp_est':  round(media, 2),
-            'letture':         voci,
-            'anomalia':        any(v['sospetto'] for v in voci),
+            'zona': luogo,
+            'media_temp_est': round(media_temp, 2),
+            'media_umid_est': round(media_umid, 1) if media_umid is not None else None,
+            'letture': voci,
+            'anomalia': any(v['sospetto'] for v in voci),
         })
 
     risultato.sort(key=lambda r: r['zona'])

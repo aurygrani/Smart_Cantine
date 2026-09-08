@@ -124,14 +124,19 @@
             font-size: 0.62rem; color: var(--danger); font-weight: 600; letter-spacing: 0.03em;
         }
         .produttore-riga {
-            display: flex; justify-content: space-between; align-items: center;
+            display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; align-items: center;
             padding: 0.4rem 0; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 0.78rem;
         }
         .produttore-riga:first-of-type { border-top: none; }
         .produttore-nome { color: #d4d4d4; text-transform: capitalize; }
-        .produttore-temp { font-family: 'Fira Code', monospace; }
+
+        .produttore-temp { font-family: 'Fira Code', monospace; text-align: right; }
         .produttore-temp.ok { color: #5DCAA5; }
         .produttore-temp.sospetto { color: #F09595; font-weight: 600; }
+
+        .produttore-umid { font-family: 'Fira Code', monospace; text-align: right; }
+        .produttore-umid.ok { color: #7AA6D9; } /* Azzurro per i valori normali */
+        .produttore-umid.sospetto { color: #F09595; font-weight: 600; } /* Rosso in caso di anomalia */
         .weather-empty { color: #a0a0ab; font-size: 0.8rem; padding: 1rem 0.2rem; }
 
         /* ── PROD: rete nodi + grafico scambi reali ── */
@@ -242,7 +247,7 @@
             <div class="map-header">
                 <div>
                     <div class="map-title">Topologia di Rete</div>
-                    <div class="map-desc" id="map-desc">Confronto della temperatura esterna tra le cantine nello stesso luogo fisico, produttori diversi. Un twin che si scosta troppo dalla media di zona segnala un possibile sensore guasto.</div>
+                    <div class="map-desc" id="map-desc">Confronto della temperatura esterna e dell'umidità in percentuale tra le cantine nello stesso luogo fisico, produttori diversi. Un twin che si scosta troppo dalla media di zona segnala un possibile sensore guasto.</div>
                 </div>
                 <div class="toggle-group">
                     <button class="toggle-btn active" id="btn-geo" onclick="setMode('geo')">🌍 RETE GLOBALE (Meteo)</button>
@@ -338,12 +343,20 @@
                 <div class="weather-card ${z.anomalia ? 'anomalia' : ''}">
                     ${z.anomalia ? '<span class="weather-badge-alert">⚠️ incoerenza</span>' : ''}
                     <h3>📍 ${z.zona}</h3>
-                    <div class="weather-media">media zona: ${z.media_temp_est.toFixed(1)}°C</div>
+                    <div class="weather-media">
+                        media zona: ${z.media_temp_est.toFixed(1)}°C
+                        ${z.media_umid_est != null ? `| ${z.media_umid_est.toFixed(0)}%` : ''}
+                    </div>
                     ${z.letture.map(l => `
                         <div class="produttore-riga">
                             <span class="produttore-nome">${l.produttore}</span>
+
                             <span class="produttore-temp ${l.sospetto ? 'sospetto' : 'ok'}">
                                 ${l.temp_est.toFixed(1)}°C${l.sospetto ? ` (Δ${l.deviazione.toFixed(1)}°C)` : ''}
+                            </span>
+
+                            <span class="produttore-umid ${l.sospetto ? 'sospetto' : 'ok'}">
+                                ${l.umid_est != null ? l.umid_est.toFixed(0) + '%' : '—'}
                             </span>
                         </div>
                     `).join('')}
