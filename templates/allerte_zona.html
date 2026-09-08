@@ -180,6 +180,8 @@
             display: flex;
             flex-direction: column;
             box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            /* Aggiungi questa riga per limitare l'altezza: */
+            max-height: 400px;
         }
 
         .log-header {
@@ -481,9 +483,14 @@
             ? `<span class="msg-alert">${e.messaggio || e.tipo}</span>`
             : `<span class="${e.pattern === 'GEO' ? 'msg-ext' : 'msg-int'}">[${e.pattern}]</span> ${e.messaggio || e.tipo}`;
         div.innerHTML = `<span class="msg-time">[${ora}]</span> ${corpo}`;
-        terminal.appendChild(div);
-        terminal.scrollTop = terminal.scrollHeight;
-        if (terminal.children.length > 30) terminal.removeChild(terminal.firstChild);
+
+        // Inserisce il nuovo messaggio in cima (prepend) invece che in fondo (appendChild)
+        terminal.prepend(div);
+
+        // Rimuove i messaggi più vecchi (in fondo) appena si supera il limite di 6
+        while (terminal.children.length > 6) {
+            terminal.removeChild(terminal.lastElementChild);
+        }
     }
 
     async function caricaEventi() {
