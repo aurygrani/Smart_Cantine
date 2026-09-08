@@ -1243,6 +1243,11 @@ mqtt_client.loop_start()
 @login_required
 def home():
     autorizzati = produttori_autorizzati()
+    # --- NUOVO BLOCCO AGGIUNTO ---
+    prod_req = request.args.get('prod')
+    if prod_req and prod_req.lower() in autorizzati:
+        autorizzati = [prod_req.lower()]
+    # -----------------------------
     subq = (
         db.session.query(DatoSensore.produttore, DatoSensore.sede,
                          func.max(DatoSensore.id).label('max_id'))
