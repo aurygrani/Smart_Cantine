@@ -138,6 +138,18 @@ SOGLIA_TEMP_BASSA = 10.0  # °C → accende LED_TEMPERATURA (serve riscaldamento
 SOGLIA_UMID_ALTA = 80.0  # %  → accende LED_UMIDITA
 SOGLIA_CO2_ALTA = 1000  # ppm → accende LED_CO2 + BUZZER
 
+# Deve restare allineata a SOGLIA_DEVIAZIONE_EST in simulatore_cantine.py.
+# Spostata qui (invece che vicino a /api/geo/consenso) perché ora viene letta
+# anche da verifica_anomalia_geo_consecutiva(), chiamata da on_message ad ogni
+# messaggio MQTT: definirla solo più in basso nel modulo rischierebbe un
+# NameError se il primo messaggio arrivasse prima che l'interprete raggiunga
+# quella riga.
+SOGLIA_GEO_DEVIAZIONE = 8.0
+
+# Dopo quante letture consecutive fuori soglia (rispetto alla media di zona)
+# una sede fa scattare l'allarme "sensore guasto" indirizzato al produttore.
+SOGLIA_GEO_CONSECUTIVE = 5
+
 
 def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=None, cfg=None):
     """
@@ -450,6 +462,14 @@ class EventoM2M(db.Model):
     pattern='GEO'  → consenso temperatura esterna tra twin della stessa zona geografica.
                      Un twin segnala agli altri che un sensore esterno è probabilmente guasto
                      perché la sua lettura devia troppo dalla media di zona.
+                     Pubblico: visibile a chiunque sia autenticato (evento_m2m_visibile()).
+
+    pattern='GEO_HW' → come 'GEO', ma quando la deviazione persiste per
+                     SOGLIA_GEO_CONSECUTIVE letture di fila: allarme "sensore
+                     guasto" indirizzato SOLO al produttore interessato
+                     (mittente = "produttore/sede"), diverso e indipendente
+                     dall'allarme CO2. Visibile solo a quel produttore, come
+                     un evento 'PROD' (vedi evento_m2m_visibile()).
 
     pattern='PROD' → allerta CO₂ intra-produttore: una sede avvisa le altre sedi
                      dello stesso produttore di abbassare la soglia di allarme
@@ -830,6 +850,85 @@ _stato_sede: dict[str, dict] = {}
 _stato_allarme_co2: dict[str, bool] = {}
 _stato_allarme_co2_m2m: dict[str, bool] = {}
 
+# ── Allarme "sensore guasto" (GEO M2M, diverso dall'allarme CO2) ────────────
+# _contatore_geo_sospetto: quante letture DI FILA una sede risulta fuori
+#   soglia rispetto alla media delle altre sedi nello stesso luogo fisico.
+#   Chiave: "produttore/sede" (stesso formato di chiave_sede più sotto).
+# _stato_allarme_geo_hw: dedup — evita di rimandare l'allarme ad ogni lettura
+#   finché il guasto persiste; si riarma solo quando la sede torna in soglia.
+_contatore_geo_sospetto: dict[str, int] = {}
+_stato_allarme_geo_hw: dict[str, bool] = {}
+
+
+def verifica_anomalia_geo_consecutiva(produttore, sede, temp_est):
+    """
+    Da chiamare dopo aver salvato una nuova DatoSensore (dentro un
+    app_context, subito dopo il commit principale). Confronta la temperatura
+    esterna appena registrata con la media delle ULTIME letture delle altre
+    sedi nello stesso luogo fisico `sede` (stessa logica di /api/geo/consenso).
+
+    Se la deviazione supera SOGLIA_GEO_DEVIAZIONE per SOGLIA_GEO_CONSECUTIVE
+    letture consecutive, genera un EventoM2M pattern='GEO_HW' indirizzato SOLO
+    al produttore interessato (visibile a lui come un evento 'PROD', vedi
+    evento_m2m_visibile) — diverso dal SENSORE_EST_SOSPETTO pubblico (che
+    segnala la singola lettura sospetta a tutta la zona) e diverso
+    dall'ALLERTA_CO2_PRODUTTORE (che riguarda la qualità del prodotto, non un
+    probabile guasto hardware del sensore esterno).
+    """
+    if temp_est is None:
+        return
+    chiave = f"{produttore}/{sede}"
+
+    subq = (db.session.query(func.max(DatoSensore.id).label('max_id'))
+            .filter(DatoSensore.sede == sede)
+            .group_by(DatoSensore.produttore).subquery())
+    letture = (db.session.query(DatoSensore)
+               .join(subq, DatoSensore.id == subq.c.max_id).all())
+    letture = [l for l in letture if l.temp_est is not None]
+
+    if len(letture) < 2:
+        # Nessun altro twin nella stessa zona con cui confrontarsi: azzera
+        # e non fare nulla, come per il consenso mostrato in dashboard.
+        _contatore_geo_sospetto[chiave] = 0
+        return
+
+    media = sum(l.temp_est for l in letture) / len(letture)
+    deviazione = abs(temp_est - media)
+    sospetto = deviazione > SOGLIA_GEO_DEVIAZIONE
+
+    if sospetto:
+        _contatore_geo_sospetto[chiave] = _contatore_geo_sospetto.get(chiave, 0) + 1
+    else:
+        _contatore_geo_sospetto[chiave] = 0
+        _stato_allarme_geo_hw[chiave] = False  # rientrato: pronto per un futuro nuovo allarme
+
+    consecutivi = _contatore_geo_sospetto[chiave]
+
+    if consecutivi >= SOGLIA_GEO_CONSECUTIVE and not _stato_allarme_geo_hw.get(chiave, False):
+        messaggio = (f"La sede {sede} di {produttore} registra un valore anomalo "
+                     f"(Δ{deviazione:.1f}°C dalla media di zona) da {consecutivi} letture "
+                     f"consecutive: probabile guasto del sensore esterno, non un picco isolato.")
+        db.session.add(EventoM2M(
+            pattern='GEO_HW',
+            tipo='ALLARME_SENSORE_GUASTO_PRODUTTORE',
+            mittente=chiave,
+            destinatari=chiave,
+            valore=deviazione,
+            messaggio=messaggio
+        ))
+        db.session.commit()
+
+        allarmi_recenti.append({
+            "tipo": "SENSORE_GUASTO_M2M",
+            "produttore": produttore, "sede": sede,
+            "valore": deviazione, "messaggio": messaggio,
+            "ts": iso_utc(datetime.utcnow())
+        })
+        _stato_allarme_geo_hw[chiave] = True
+        print(f"🔧 [GEO M2M] Allarme sensore guasto per {chiave}: "
+              f"{consecutivi} letture consecutive fuori soglia (Δ{deviazione:.1f}°C)")
+
+
 # Contatore cicli per ogni sede — usato per eseguire il GestoreAllarmiIntelligente
 # solo ogni N cicli (evita di appesantire il flusso MQTT con query DB ad ogni messaggio)
 _contatore_cicli: dict[str, int] = {}
@@ -1197,6 +1296,12 @@ def on_message(client, userdata, msg):
 
                     db.session.commit()
 
+                    # Allarme "sensore guasto" GEO — indipendente e diverso da
+                    # quello CO2: guarda solo se QUESTA lettura, confrontata con
+                    # le altre sedi della stessa zona, prosegue un pattern di
+                    # deviazione persistente (vedi funzione per i dettagli).
+                    verifica_anomalia_geo_consecutiva(produttore, sede, temp_est)
+
                     # ML 6: GestoreAllarmiIntelligente ogni 5 cicli
                     if _MODULI_ML_DISPONIBILI and _gestore is not None:
                         try:
@@ -1471,6 +1576,12 @@ def evento_m2m_visibile(e, autorizzati):
                         zona geografica, produttori diversi. È un dato pubblico/
                         ambientale (non riguarda l'interno della cantina di
                         nessuno), quindi visibile a chiunque sia autenticato.
+    - pattern 'GEO_HW' → allarme "sensore guasto" (deviazione persistente,
+                        vedi verifica_anomalia_geo_consecutiva()): a differenza
+                        di 'GEO', qui l'evento è mirato a UN produttore
+                        specifico (quello con il sensore sospetto), quindi
+                        segue la stessa regola di 'PROD' qui sotto: visibile
+                        solo al produttore indicato nel mittente.
     - pattern 'PROD' → allerta CO₂ (dato INTERNO) scambiata solo tra le sedi
                         dello stesso produttore. Un produttore non deve vedere
                         i livelli di CO₂ di un produttore diverso: l'evento è
@@ -1681,6 +1792,10 @@ def api_eventi_m2m():
         'id': e.id, 'timestamp': iso_utc(e.timestamp),
         'pattern': e.pattern, 'tipo': e.tipo,
         'mittente': e.mittente, 'destinatari': e.destinatari,
+        # Comodo per il frontend (es. il toast dell'allarme sensore-guasto,
+        # indirizzato esplicitamente al produttore): stesso valore che
+        # evento_m2m_visibile() usa già per il filtro di visibilità.
+        'produttore': (e.mittente or '').split('/')[0],
         'valore': float(e.valore) if e.valore is not None else None,
         'messaggio': e.messaggio,
     } for e in eventi])
@@ -1791,12 +1906,12 @@ def api_contatto_delete(contatto_id):
     return jsonify({'ok': True})
 
 
-# Deve restare allineata a SOGLIA_DEVIAZIONE_EST in simulatore_cantine.py:
-# stessa soglia, calcolata qui "live" (istante per istante, dall'ultima
-# lettura nota) invece che solo quando il simulatore pubblica un nuovo
-# EventoM2M — così il pannello "meteo" si può disegnare subito, anche prima
-# che una deviazione superi la soglia e generi un evento storico.
-SOGLIA_GEO_DEVIAZIONE = 8.0
+# SOGLIA_GEO_DEVIAZIONE: definita in cima al file (vedi commento lì) — deve
+# restare allineata a SOGLIA_DEVIAZIONE_EST in simulatore_cantine.py. Calcolata
+# qui "live" (istante per istante, dall'ultima lettura nota) invece che solo
+# quando il simulatore pubblica un nuovo EventoM2M — così il pannello "meteo"
+# si può disegnare subito, anche prima che una deviazione superi la soglia e
+# generi un evento storico.
 
 
 @app.route('/api/geo/consenso')
@@ -1839,6 +1954,11 @@ def api_geo_consenso():
                 'umid_est': float(l.umid_est) if l.umid_est is not None else None,
                 'deviazione': round(deviazione, 2),
                 'sospetto': deviazione > SOGLIA_GEO_DEVIAZIONE,
+                # Letture consecutive fuori soglia per questo produttore in
+                # questa zona — vedi verifica_anomalia_geo_consecutiva(), usato
+                # dal frontend per evidenziare il caso "possibile guasto" prima
+                # ancora che scatti l'allarme diretto al produttore.
+                'consecutivi': _contatore_geo_sospetto.get(f"{l.produttore}/{l.sede}", 0),
                 'timestamp': iso_utc(l.timestamp),
             })
         voci.sort(key=lambda v: v['produttore'])
