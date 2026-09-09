@@ -705,6 +705,69 @@
             background: var(--rame);
             transition: width 0.6s ease;
         }
+
+        /* ── Badge fonte del dato (sensore diretto vs output modello ML) ── */
+        .fattore-fonte {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase;
+            font-weight: 600; padding: 0.08rem 0.4rem; border-radius: 99px;
+            margin-left: 0.4rem; vertical-align: middle;
+        }
+        .fattore-fonte.sensore { background: #E1F0EE; color: #0E7C86; }
+        .fattore-fonte.ml      { background: #EFE8F7; color: #5B3FA0; }
+
+        /* ── Riga di dettaglio: valore misurato + riferimento/target ── */
+        .fattore-dettaglio {
+            display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem;
+            font-size: 0.66rem; color: var(--testo-soft);
+        }
+        .fattore-dettaglio strong { color: var(--testo); font-weight: 500; }
+
+        /* ── Regola di calcolo (per dettagliare "come" si arriva al punteggio) ── */
+        .fattore-regola {
+            font-size: 0.63rem; color: var(--testo-soft); font-style: italic;
+            opacity: 0.85;
+        }
+
+        /* ── Box metodologia collassabile (legenda generale del punteggio) ── */
+        .metodologia-box {
+            margin-top: 1rem;
+            border: 1px solid var(--avorio-md);
+            border-radius: var(--r);
+            background: #FAF7F0;
+        }
+        .metodologia-box summary {
+            cursor: pointer;
+            padding: 0.6rem 0.9rem;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: var(--bordeaux-md);
+            list-style: none;
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+        .metodologia-box summary::-webkit-details-marker { display: none; }
+        .metodologia-box summary::before { content: '▸'; transition: transform 0.15s; }
+        .metodologia-box[open] summary::before { transform: rotate(90deg); }
+        .metodologia-box .metodologia-corpo {
+            padding: 0 0.9rem 0.9rem;
+            font-size: 0.68rem;
+            color: var(--testo-soft);
+            line-height: 1.6;
+        }
+        .metodologia-box .metodologia-corpo table {
+            width: 100%; border-collapse: collapse; margin-top: 0.4rem;
+        }
+        .metodologia-box .metodologia-corpo td {
+            padding: 0.2rem 0.4rem 0.2rem 0; border-bottom: 1px dashed var(--avorio-md);
+        }
+        .metodologia-box .soglia-pill {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            font-size: 0.64rem; font-weight: 600; padding: 0.1rem 0.5rem;
+            border-radius: 99px; margin-right: 0.4rem;
+        }
+        .soglia-pill.verde  { background: var(--ok-bg, #E1F5EE); color: var(--ok); }
+        .soglia-pill.giallo { background: var(--warn-bg, #FAEEDA); color: var(--warn); }
+        .soglia-pill.rosso  { background: var(--danger-bg, #FCEBEB); color: var(--danger); }
     </style>
 </head>
 <body>
@@ -856,10 +919,42 @@
                 {% if stato_sede %}
                 {% for f in stato_sede.fattori %}
                 <div class="fattore-riga" data-nome="{{ f.nome }}">
-                    <div class="fattore-testa"><span>{{ f.nome }}</span><strong>{{ "%.0f"|format(f.punti) }}/{{ f.max }}</strong></div>
+                    <div class="fattore-testa">
+                        <span>{{ f.nome }}<span class="fattore-fonte {{ f.fonte }}">{{ '🔬 sensore' if f.fonte == 'sensore' else '🤖 ML' }}</span></span>
+                        <strong>{{ "%.0f"|format(f.punti) }}/{{ f.max }}</strong>
+                    </div>
                     <div class="fattore-barra-sfondo"><div class="fattore-barra-riempimento" style="width: {{ (f.punti / f.max * 100) if f.max else 0 }}%"></div></div>
+                    <div class="fattore-dettaglio">
+                        <span>Misurato: <strong>{{ f.valore }}</strong></span>
+                        <span>Riferimento: <strong>{{ f.riferimento }}</strong></span>
+                    </div>
+                    <div class="fattore-regola">{{ f.regola }}</div>
                 </div>
                 {% endfor %}
+
+                <details class="metodologia-box">
+                    <summary>ℹ️ Come si calcola questo punteggio?</summary>
+                    <div class="metodologia-corpo">
+                        Il punteggio è la somma di 5 fattori pesati (max 100 punti totali), ciascuno confrontato
+                        con il proprio target o soglia configurata per la sede. I fattori 🔬 derivano
+                        direttamente dai sensori (temperatura, umidità, CO₂); i fattori 🤖 derivano
+                        dall'output dei modelli ML (proiezione della temperatura del vino, classificazione
+                        dell'efficienza energetica).
+                        <table>
+                            <tr><td>Temperatura</td><td>30 pt</td></tr>
+                            <tr><td>CO₂</td><td>25 pt</td></tr>
+                            <tr><td>Umidità</td><td>20 pt</td></tr>
+                            <tr><td>Trend vino (ML)</td><td>15 pt</td></tr>
+                            <tr><td>Efficienza energetica (ML)</td><td>10 pt</td></tr>
+                        </table>
+                        <div style="margin-top:0.6rem;">
+                            <span class="soglia-pill verde">≥ 75 Buona</span>
+                            <span class="soglia-pill giallo">45–74 Media</span>
+                            <span class="soglia-pill rosso">&lt; 45 Cattiva</span>
+                        </div>
+                    </div>
+                </details>
+
                 {% else %}
                 <p style="font-size:0.75rem; color:var(--testo-soft);">Nessun dato ancora disponibile per questa sede.</p>
                 {% endif %}
@@ -1367,6 +1462,12 @@ function aggiornaStatoSede(stato) {
         const barraEl  = riga.querySelector('.fattore-barra-riempimento');
         if (valoreEl) valoreEl.textContent = `${Math.round(f.punti)}/${f.max}`;
         if (barraEl)  barraEl.style.width = `${f.max ? (f.punti / f.max * 100) : 0}%`;
+
+        // Aggiorna anche "Misurato" e "Riferimento" (i due <strong> del dettaglio,
+        // nello stesso ordine in cui sono renderizzati server-side)
+        const dettaglioStrong = riga.querySelectorAll('.fattore-dettaglio strong');
+        if (dettaglioStrong[0] && f.valore != null) dettaglioStrong[0].textContent = f.valore;
+        if (dettaglioStrong[1] && f.riferimento != null) dettaglioStrong[1].textContent = f.riferimento;
     });
 }
 

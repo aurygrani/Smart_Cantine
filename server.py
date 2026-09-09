@@ -244,6 +244,13 @@ def calcola_stato_sede(temp_int, umid_int, co2, minuti_alla_soglia, trend_penden
     modelli ML (trend previsto della temperatura del vino, fascia di
     efficienza energetica), pesati per importanza.
 
+    Ogni fattore riporta anche 'valore' (il dato misurato), 'riferimento' (il
+    target/soglia con cui è confrontato), 'regola' (come i punti vengono
+    calcolati da quel confronto) e 'fonte' ('sensore' o 'ml') — non solo il
+    punteggio nudo, così in UI si può spiegare "perché" quel numero, non solo
+    mostrarlo. Prima questi campi non esistevano: il pannello sapeva solo
+    disegnare la barra, non giustificarla.
+
     Ritorna punteggio, etichetta (Buona/Media/Cattiva), colore e il dettaglio
     dei singoli fattori (per mostrare le barre di scomposizione in UI).
     """
@@ -256,39 +263,74 @@ def calcola_stato_sede(temp_int, umid_int, co2, minuti_alla_soglia, trend_penden
     # 1. Temperatura interna vs target sede (max 30 punti, -6 per grado di scarto)
     if temp_int is not None:
         punti_t = max(0.0, 30.0 - abs(temp_int - target_temp) * 6.0)
+        valore_t = f"{temp_int:.1f}°C"
     else:
         punti_t = 15.0  # dato mancante → punteggio neutro, non penalizzante
-    fattori.append({'nome': 'Temperatura', 'punti': round(punti_t, 1), 'max': 30})
+        valore_t = "N/D"
+    fattori.append({
+        'nome': 'Temperatura', 'punti': round(punti_t, 1), 'max': 30,
+        'valore': valore_t, 'riferimento': f"target {target_temp:.1f}°C",
+        'regola': "30 pt, −6 pt per ogni °C di scarto dal target",
+        'fonte': 'sensore',
+    })
 
     # 2. Umidità interna vs target sede (max 20 punti, -1 per punto % di scarto)
     if umid_int is not None:
         punti_u = max(0.0, 20.0 - abs(umid_int - target_umid) * 1.0)
+        valore_u = f"{umid_int:.0f}%"
     else:
         punti_u = 10.0
-    fattori.append({'nome': 'Umidità', 'punti': round(punti_u, 1), 'max': 20})
+        valore_u = "N/D"
+    fattori.append({
+        'nome': 'Umidità', 'punti': round(punti_u, 1), 'max': 20,
+        'valore': valore_u, 'riferimento': f"target {target_umid:.0f}%",
+        'regola': "20 pt, −1 pt per ogni punto % di scarto dal target",
+        'fonte': 'sensore',
+    })
 
     # 3. CO2 vs soglia sede (max 25 punti; sotto metà soglia = punteggio pieno,
     #    sopra soglia crolla rapidamente)
     if co2 is not None and soglia_co2:
         rapporto = co2 / soglia_co2
         punti_co2 = max(0.0, 25.0 - max(0.0, rapporto - 0.5) * 40.0)
+        valore_co2 = f"{co2:.0f} ppm"
     else:
         punti_co2 = 12.5
-    fattori.append({'nome': 'CO₂', 'punti': round(punti_co2, 1), 'max': 25})
+        valore_co2 = "N/D"
+    fattori.append({
+        'nome': 'CO₂', 'punti': round(punti_co2, 1), 'max': 25,
+        'valore': valore_co2, 'riferimento': f"soglia {soglia_co2:.0f} ppm",
+        'regola': "25 pt fino a metà soglia, poi −40 pt per ogni soglia intera superata",
+        'fonte': 'sensore',
+    })
 
     # 4. Trend vino / minuti alla soglia critica, dal modello ML (max 15 punti;
     #    60+ minuti di margine = punteggio pieno)
     if minuti_alla_soglia is not None:
         punti_vino = min(15.0, max(0.0, minuti_alla_soglia) / 4.0)
+        valore_vino = f"{minuti_alla_soglia:.0f} min di margine"
     elif trend_pendenza is not None and trend_pendenza <= 0:
         punti_vino = 15.0  # temperatura del vino stabile o in calo: nessun rischio imminente
+        valore_vino = "trend stabile/in calo"
     else:
         punti_vino = 8.0   # nessun dato ML disponibile → punteggio neutro
-    fattori.append({'nome': 'Trend vino (ML)', 'punti': round(punti_vino, 1), 'max': 15})
+        valore_vino = "N/D"
+    fattori.append({
+        'nome': 'Trend vino (ML)', 'punti': round(punti_vino, 1), 'max': 15,
+        'valore': valore_vino, 'riferimento': "pieno se margine ≥ 60 min",
+        'regola': "15 pt, −1 pt ogni 4 minuti di margine in meno prima della soglia critica",
+        'fonte': 'ml',
+    })
 
     # 5. Efficienza energetica stimata dal modello ML (max 10 punti)
     punti_eff = {'A': 10.0, 'B': 6.0, 'C': 2.0}.get(fascia_efficienza, 5.0)
-    fattori.append({'nome': 'Efficienza energetica (ML)', 'punti': round(punti_eff, 1), 'max': 10})
+    fattori.append({
+        'nome': 'Efficienza energetica (ML)', 'punti': round(punti_eff, 1), 'max': 10,
+        'valore': f"fascia {fascia_efficienza}" if fascia_efficienza else "N/D",
+        'riferimento': "A=10 pt · B=6 pt · C=2 pt",
+        'regola': "Punteggio diretto dalla fascia di efficienza stimata dal modello",
+        'fonte': 'ml',
+    })
 
     punteggio = round(min(100.0, max(0.0, sum(f['punti'] for f in fattori))), 1)
 
@@ -421,6 +463,37 @@ class EventoM2M(db.Model):
     destinatari = db.Column(db.String(200))
     valore = db.Column(db.Float)
     messaggio = db.Column(db.String(400))
+
+
+class RichiestaCantina(db.Model):
+    """
+    Richiesta di un produttore per l'aggiunta di una nuova cantina/sede al
+    proprio consorzio (form "Aggiungi cantina" in hub.html). Non crea da sola
+    nessuna sede reale: è solo una richiesta che finisce nella coda
+    dell'amministratore (tab "Richieste cantine"), che la gestisce a mano.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    produttore = db.Column(db.String(50))     # consorzio richiedente = ruolo di chi ha inviato la richiesta
+    richiesto_da = db.Column(db.String(100))  # username di chi ha compilato il form
+    nome_cantina = db.Column(db.String(150))
+    localita = db.Column(db.String(150))
+    note = db.Column(db.Text)
+    stato = db.Column(db.String(20), default='in_attesa')  # 'in_attesa' | 'gestita'
+
+
+class Contatto(db.Model):
+    """
+    Rubrica di contatti del consorzio (modale "Contatti" in hub.html). Ogni
+    produttore vede e gestisce solo i propri: filtrata per produttore, come
+    tutto il resto della dashboard.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    produttore = db.Column(db.String(50))
+    nome = db.Column(db.String(150))
+    ruolo_persona = db.Column(db.String(150))  # es. "Responsabile sede Carpi" — non il ruolo di login
+    email = db.Column(db.String(150))
+    telefono = db.Column(db.String(50))
 
 
 @login_manager.user_loader
@@ -1611,6 +1684,111 @@ def api_eventi_m2m():
         'valore': float(e.valore) if e.valore is not None else None,
         'messaggio': e.messaggio,
     } for e in eventi])
+
+
+# ── RICHIESTE CANTINE (form "Aggiungi cantina" in hub.html) ───────────────────
+@app.route('/api/richieste-cantine', methods=['GET', 'POST'])
+@login_required
+def api_richieste_cantine():
+    is_admin = (current_user.ruolo or '').strip().lower() == 'admin'
+
+    if request.method == 'POST':
+        # Solo un produttore può richiedere una nuova cantina per il proprio
+        # consorzio: l'admin non ha il pulsante in UI (vedi hub.html,
+        # {% if ruolo != "admin" %}), lo blocchiamo anche lato server.
+        if is_admin:
+            return jsonify({'error': "Un amministratore non può inviare una richiesta."}), 400
+
+        payload = request.get_json(silent=True) or {}
+        nome_cantina = (payload.get('nome_cantina') or '').strip()
+        if not nome_cantina:
+            return jsonify({'error': 'Il nome della cantina è obbligatorio.'}), 400
+
+        r = RichiestaCantina(
+            produttore=current_user.ruolo,
+            richiesto_da=current_user.username,
+            nome_cantina=nome_cantina,
+            localita=(payload.get('localita') or '').strip() or None,
+            note=(payload.get('note') or '').strip() or None,
+            stato='in_attesa',
+        )
+        db.session.add(r)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': r.id}), 201
+
+    # GET — la coda delle richieste è visibile solo all'amministratore
+    # (unico ruolo per cui hub.html mostra la tab "Richieste cantine")
+    if not is_admin:
+        return jsonify({'error': 'Non autorizzato.'}), 403
+    richieste = RichiestaCantina.query.order_by(RichiestaCantina.timestamp.desc()).all()
+    return jsonify([{
+        'id':           r.id,
+        'timestamp':    iso_utc(r.timestamp),
+        'produttore':   r.produttore,
+        'richiesto_da': r.richiesto_da,
+        'nome_cantina': r.nome_cantina,
+        'localita':     r.localita,
+        'note':         r.note,
+        'stato':        r.stato,
+    } for r in richieste])
+
+
+@app.route('/api/richieste-cantine/<int:richiesta_id>', methods=['PATCH'])
+@login_required
+def api_richiesta_cantina_update(richiesta_id):
+    if (current_user.ruolo or '').strip().lower() != 'admin':
+        return jsonify({'error': 'Non autorizzato.'}), 403
+    r = RichiestaCantina.query.get_or_404(richiesta_id)
+    payload = request.get_json(silent=True) or {}
+    nuovo_stato = payload.get('stato')
+    if nuovo_stato not in ('in_attesa', 'gestita'):
+        return jsonify({'error': "Stato non valido (atteso 'in_attesa' o 'gestita')."}), 400
+    r.stato = nuovo_stato
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ── CONTATTI (rubrica del consorzio, modale "Contatti" in hub.html) ───────────
+@app.route('/api/contatti', methods=['GET', 'POST'])
+@login_required
+def api_contatti():
+    # Rubrica per consorzio: ogni produttore vede e gestisce solo i propri
+    # contatti — stesso principio di isolamento usato per i dati sensore.
+    produttore = current_user.ruolo
+
+    if request.method == 'POST':
+        payload = request.get_json(silent=True) or {}
+        nome = (payload.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'error': 'Il nome è obbligatorio.'}), 400
+        c = Contatto(
+            produttore=produttore,
+            nome=nome,
+            ruolo_persona=(payload.get('ruolo_persona') or '').strip() or None,
+            email=(payload.get('email') or '').strip() or None,
+            telefono=(payload.get('telefono') or '').strip() or None,
+        )
+        db.session.add(c)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': c.id}), 201
+
+    contatti = (Contatto.query.filter_by(produttore=produttore)
+                .order_by(Contatto.nome).all())
+    return jsonify([{
+        'id': c.id, 'nome': c.nome, 'ruolo_persona': c.ruolo_persona,
+        'email': c.email, 'telefono': c.telefono,
+    } for c in contatti])
+
+
+@app.route('/api/contatti/<int:contatto_id>', methods=['DELETE'])
+@login_required
+def api_contatto_delete(contatto_id):
+    c = Contatto.query.get_or_404(contatto_id)
+    if c.produttore != current_user.ruolo:
+        return jsonify({'error': 'Non autorizzato.'}), 403
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # Deve restare allineata a SOGLIA_DEVIAZIONE_EST in simulatore_cantine.py:
