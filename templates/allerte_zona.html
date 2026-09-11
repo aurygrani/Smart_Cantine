@@ -35,6 +35,14 @@
         .sidebar nav a { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1.5rem; text-decoration: none; font-size: 0.85rem; color: rgba(245,239,224,0.75); transition: background 0.15s, color 0.15s; border-left: 2px solid transparent; }
         .sidebar nav a:hover, .sidebar nav a.active { background: rgba(245,239,224,0.08); color: var(--avorio); border-left-color: var(--rame); }
         .sidebar nav a .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+        /* ── LOGOUT & USER PILL ── */
+        .sidebar-bottom { margin-top: auto; padding: 0 1.5rem 1rem; }
+        .user-pill { display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.8rem; background: rgba(245,239,224,0.06); border-radius: 10px; }
+        .user-pill .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--bordeaux-md); border: 1.5px solid rgba(245,239,224,0.25); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 500; color: var(--avorio); text-transform: uppercase; flex-shrink: 0; }
+        .user-pill .info .name { font-size: 0.82rem; color: var(--avorio); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-pill .info .role { font-size: 0.68rem; color: rgba(245,239,224,0.4); }
+        .logout-btn { display: block; margin-top: 0.75rem; text-align: center; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(245,239,224,0.35); text-decoration: none; transition: color 0.15s; }
+        .logout-btn:hover { color: rgba(245,239,224,0.7); }
 
         /* ── MAIN ── */
         .main { margin-left: var(--sidebar-w); flex: 1; padding: 2.5rem 2.5rem 3rem; }
@@ -292,9 +300,19 @@
     <div class="sidebar-divider"></div>
     <p class="sidebar-label">Sistema</p>
     <nav>
-        <a href="/">📊 Dashboard</a>
+        <a href="/{% if request.args.get('prod') %}?prod={{ request.args.get('prod') }}{% endif %}">📊 Dashboard</a>
         <a href="/allerte-zona" class="active"><span class="dot" style="background:#FF9800"></span>📡 Comunicazioni M2M</a>
     </nav>
+    <div class="sidebar-bottom">
+        <div class="user-pill">
+            <div class="avatar">{{ nome[:2] }}</div>
+            <div class="info">
+                <div class="name">{{ nome }}</div>
+                <div class="role">{% if ruolo == 'admin' %}Amministratore{% else %}{{ ruolo | capitalize }}{% endif %}</div>
+            </div>
+        </div>
+        <a href="/logout" class="logout-btn">Esci</a>
+    </div>
 </aside>
 
 <div id="toast-hw-container"></div>
@@ -365,8 +383,20 @@
     const terminal = document.getElementById('terminal');
     let ultimoIdEvento = 0;
     let primoCaricoEventi = true;
-    let produttoreProdSelezionato = null;
     let chartProd = null;
+
+    // Produttore selezionato dallo switcher admin in hub.html (/?prod=rossi),
+    // propagato qui via il link "Dashboard" nella sidebar. Usato per:
+    // 1) filtrare il terminale log (/api/eventi-m2m/recenti?prod=...)
+    // 2) pre-selezionare lo stesso produttore nel pannello "Rete Privata",
+    //    invece di mostrare di default il primo della lista — così la scelta
+    //    fatta in Dashboard resta coerente anche su questa pagina.
+    const PROD_FILTRO = new URLSearchParams(window.location.search).get('prod');
+    function conFiltroProd(url) {
+        if (!PROD_FILTRO) return url;
+        return url + (url.includes('?') ? '&' : '?') + 'prod=' + encodeURIComponent(PROD_FILTRO);
+    }
+    let produttoreProdSelezionato = PROD_FILTRO;
 
     function formattaOra(iso) {
         if (!iso) return '';
@@ -618,7 +648,7 @@
 
     async function caricaEventi() {
         try {
-            const res = await fetch('/api/eventi-m2m/recenti');
+            const res = await fetch(conFiltroProd('/api/eventi-m2m/recenti'));
             if (!res.ok) return;
             const eventi = await res.json();
             const ordinati = [...eventi].sort((a, b) => a.id - b.id);

@@ -350,6 +350,33 @@
         .gauge-card .g-fill.danger { background:var(--danger); }
 
         .empty-state { text-align:center; padding:3rem 2rem; color:var(--testo-soft); font-size:0.9rem; }
+        /* ── ALLARMI SENSORE (GIALLI) ── */
+        .allarme-sensore-card {
+            background: rgba(255, 152, 0, 0.12);
+            border: 1px solid rgba(255, 152, 0, 0.5);
+            border-left: 4px solid #FF9800;
+            border-radius: var(--r);
+            padding: 0.8rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .allarme-sensore-card .testo { font-size: 0.85rem; line-height: 1.4; }
+        .allarme-sensore-card .testo b { color: #B85E00; }
+        .allarme-sensore-card button {
+            flex-shrink: 0;
+            background: #FF9800;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .allarme-sensore-card button:hover { background: #E68900; }
     </style>
 </head>
 <body>
@@ -389,7 +416,7 @@
     <p class="sidebar-label">Sistema</p>
     <nav>
         <a href="/" class="active">📊 Dashboard</a>
-        <a href="/allerte-zona">📡 Comunicazioni M2M</a>
+        <a href="/allerte-zona{% if request.args.get('prod') %}?prod={{ request.args.get('prod') }}{% endif %}">📡 Comunicazioni M2M</a>
     </nav>
     <div class="sidebar-bottom">
         <div class="user-pill">
@@ -414,6 +441,9 @@
             <span class="ts" id="ora-corrente"></span>
         </div>
     </div>
+
+    <!--Banner allarmi sensore -->
+    <div id="allarmi-sensore-container" style="display:flex; flex-direction:column; gap:0.6rem; margin-bottom:1.2rem;"></div>
 
     <!-- KPI -->
     <div class="kpi-row">
@@ -914,6 +944,17 @@ function escapeHtml(str) {
 const DATI_SEDI = {{ dati_sedi | tojson }};
 const RUOLO = {{ ruolo | tojson }};
 
+// Produttore selezionato dallo switcher admin (/?prod=rossi) — la pagina
+// stessa è già filtrata server-side (vedi DATI_SEDI sopra), ma le chiamate
+// live dei tab "Cruscotti" e "Log" (fetch separate, non render_template)
+// devono ripassare esplicitamente lo stesso filtro o mostrerebbero comunque
+// i dati di tutti i produttori.
+const PROD_FILTRO = new URLSearchParams(window.location.search).get('prod');
+function conFiltroProd(url) {
+    if (!PROD_FILTRO) return url;
+    return url + (url.includes('?') ? '&' : '?') + 'prod=' + encodeURIComponent(PROD_FILTRO);
+}
+
 // ── LOG STREAM ────────────────────────────────────────────────────────────────
 const logBuffer = [];  // buffer locale degli ultimi 200 eventi
 
@@ -1154,12 +1195,12 @@ function beep(tipo) {
 
 function chiudiAllarme() {
     document.getElementById('alarm-banner').style.display = 'none';
-    fetch('/api/allarmi/recenti/clear', { method:'POST' });
+    fetch(conFiltroProd('/api/allarmi/recenti/clear'), { method:'POST' });
 }
 
 async function pollAllarmi() {
     try {
-        const res   = await fetch('/api/allarmi/recenti');
+        const res   = await fetch(conFiltroProd('/api/allarmi/recenti'));
         const lista = await res.json();
         if (!lista.length) return;
         const ult = lista[lista.length - 1];
@@ -1277,7 +1318,7 @@ let ultimoAllarmeML_id = 0;
 
 async function pollML() {
     try {
-        const res  = await fetch('/api/ml/stato-sedi');
+        const res  = await fetch(conFiltroProd('/api/ml/stato-sedi'));
         if (!res.ok) return;
         const list = await res.json();
 
@@ -1320,7 +1361,7 @@ async function pollML() {
         }
 
         // Allarmi ML → log
-        const resML = await fetch('/api/ml/allarmi-ml');
+        const resML = await fetch(conFiltroProd('/api/ml/allarmi-ml'));
         if (resML.ok) {
             const allarmi = await resML.json();
             allarmi.forEach(a => {
@@ -1338,7 +1379,7 @@ let ultimoEventoM2M_id = 0;
 
 async function pollEventiM2M() {
     try {
-        const res    = await fetch('/api/eventi-m2m/recenti');
+        const res    = await fetch(conFiltroProd('/api/eventi-m2m/recenti'));
         if (!res.ok) return;
         const eventi = await res.json();
         eventi.forEach(e => {
@@ -1366,6 +1407,41 @@ if (RUOLO === 'admin') {
     setInterval(caricaRichiesteCantine, 20000);
     setTimeout(caricaRichiesteCantine, 2000);
 }
+
+// ── ALLARMI SENSORE GUASTO (GIALLI, SENZA SUONO) ──
+async function caricaAllarmiSensore() {
+    try {
+        const res = await fetch('/api/allarmi-sensore/attivi');
+        if (!res.ok) return;
+        const allarmi = await res.json();
+        const container = document.getElementById('allarmi-sensore-container');
+
+        container.innerHTML = allarmi.map(a => `
+            <div class="allarme-sensore-card" data-id="${a.id}">
+                <div class="testo">
+                    <b>⚠️ Sede ${a.sede} — anomalìa ${a.grandezza === 'temp' ? 'temperatura' : 'umidità'}</b><br>
+                    ${a.messaggio}
+                </div>
+                <button onclick="presaInCarico(${a.id})">Presa in carico</button>
+            </div>
+        `).join('');
+    } catch (err) {
+        // Ignora errori di rete silenziosamente
+    }
+}
+
+async function presaInCarico(id) {
+    try {
+        await fetch(`/api/allarmi-sensore/${id}/presa-in-carico`, { method: 'POST' });
+        caricaAllarmiSensore(); // Ricarica istantaneamente la lista per farlo sparire
+    } catch (err) {
+        console.error('Errore presa in carico:', err);
+    }
+}
+
+// Avvio il polling silenzioso ogni 10 secondi
+caricaAllarmiSensore();
+setInterval(caricaAllarmiSensore, 10000);
 </script>
 </body>
 </html>

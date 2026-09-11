@@ -42,6 +42,7 @@ DHT dht(DHTPIN, DHTTYPE);
 #define LED_TEMPERATURA 25
 #define LED_UMIDITA 26
 #define LED_CO2 27
+#define LED_ARIACOND 23
 
 // =======================
 // TIMER LETTURE
@@ -57,6 +58,7 @@ void spegniAttuatori() {
   digitalWrite(LED_TEMPERATURA, LOW);
   digitalWrite(LED_UMIDITA, LOW);
   digitalWrite(LED_CO2, LOW);
+  digitalWrite(LED_ARIACOND, LOW);
 }
 
 // =======================
@@ -83,8 +85,15 @@ void setup_wifi() {
 // =======================
 // CALLBACK MQTT
 // Il server invia un messaggio del tipo:
-// TEMP=1;UMID=0;CO2=1;BUZZER=0
+// RISC=1;RAFFR=0;UMID=0;CO2=1;BUZZER=0
 // 1 = acceso, 0 = spento
+// RISC  -> LED_TEMPERATURA (riscaldamento, temperatura troppo BASSA)
+// RAFFR -> LED_ARIACOND    (aria condizionata, temperatura troppo ALTA)
+// I due LED non si accendono mai insieme (il server non manda mai
+// RISC=1;RAFFR=1 nello stesso messaggio), ma restano due pin/campi separati
+// invece di un unico "TEMP" perché ora rappresentano due azioni fisiche
+// diverse (riscaldamento vs raffreddamento), non più un solo "serve
+// intervenire sulla temperatura".
 // =======================
 void callback(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, TOPIC_COMANDI) != 0) {
@@ -104,27 +113,30 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Comando ricevuto dal server: ");
   Serial.println(messaggio);
 
-  int statoTemperatura;
+  int statoRiscaldamento;
+  int statoAriaCond;
   int statoUmidita;
   int statoCO2;
   int statoBuzzer;
 
   int campiLetti = sscanf(
     messaggio,
-    "TEMP=%d;UMID=%d;CO2=%d;BUZZER=%d",
-    &statoTemperatura,
+    "RISC=%d;RAFFR=%d;UMID=%d;CO2=%d;BUZZER=%d",
+    &statoRiscaldamento,
+    &statoAriaCond,
     &statoUmidita,
     &statoCO2,
     &statoBuzzer
   );
 
-  if (campiLetti != 4) {
+  if (campiLetti != 5) {
     Serial.println("Formato del comando non valido: comando ignorato");
     return;
   }
 
   // Controllo che i valori che arrivano siano solo 0 oppure 1.
-  if ((statoTemperatura != 0 && statoTemperatura != 1) ||
+  if ((statoRiscaldamento != 0 && statoRiscaldamento != 1) ||
+      (statoAriaCond != 0 && statoAriaCond != 1) ||
       (statoUmidita != 0 && statoUmidita != 1) ||
       (statoCO2 != 0 && statoCO2 != 1) ||
       (statoBuzzer != 0 && statoBuzzer != 1)) {
@@ -133,16 +145,19 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 
   // L'ESP32 applica la decisione del server.
-  //Il codice utilizza l'operatore ternario (condizione ? VERO : FALSO): 
-  //ad esempio, statoTemperatura ? HIGH : LOW significa "se statoTemperatura 
+  //Il codice utilizza l'operatore ternario (condizione ? VERO : FALSO):
+  //ad esempio, statoRiscaldamento ? HIGH : LOW significa "se statoRiscaldamento
   //è 1 (vero), manda HIGH al pin, altrimenti manda LOW".
-  digitalWrite(LED_TEMPERATURA, statoTemperatura ? HIGH : LOW);
+  digitalWrite(LED_TEMPERATURA, statoRiscaldamento ? HIGH : LOW);
+  digitalWrite(LED_ARIACOND, statoAriaCond ? HIGH : LOW);
   digitalWrite(LED_UMIDITA, statoUmidita ? HIGH : LOW);
   digitalWrite(LED_CO2, statoCO2 ? HIGH : LOW);
   digitalWrite(BUZZER, statoBuzzer ? HIGH : LOW);
 
-  Serial.print("LED temperatura: ");
-  Serial.println(statoTemperatura ? "ACCESO" : "SPENTO");
+  Serial.print("LED temperatura (riscaldamento): ");
+  Serial.println(statoRiscaldamento ? "ACCESO" : "SPENTO");
+  Serial.print("LED aria condizionata: ");
+  Serial.println(statoAriaCond ? "ACCESO" : "SPENTO");
   Serial.print("LED umidita: ");
   Serial.println(statoUmidita ? "ACCESO" : "SPENTO");
   Serial.print("LED CO2: ");
@@ -187,6 +202,7 @@ void setup() {
   pinMode(LED_TEMPERATURA, OUTPUT);
   pinMode(LED_UMIDITA, OUTPUT);
   pinMode(LED_CO2, OUTPUT);
+  pinMode(LED_ARIACOND, OUTPUT);
 
   spegniAttuatori();
   setup_wifi();

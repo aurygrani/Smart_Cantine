@@ -144,36 +144,48 @@ SOGLIA_CO2_ALTA = 1000  # ppm → accende LED_CO2 + BUZZER
 # messaggio MQTT: definirla solo più in basso nel modulo rischierebbe un
 # NameError se il primo messaggio arrivasse prima che l'interprete raggiunga
 # quella riga.
-SOGLIA_GEO_DEVIAZIONE = 8.0
+SOGLIA_GEO_DEVIAZIONE = 8.0        # °C — deviazione "sospetta" (temperatura)
+SOGLIA_GEO_DEVIAZIONE_UMID = 15.0  # punti % — equivalente per l'umidità
+
+# Deviazione "estrema": scatta l'allarme SUBITO, anche su una singola lettura
+# isolata, senza aspettare che si ripeta. Le deviazioni più moderate (sopra
+# SOGLIA_GEO_DEVIAZIONE/_UMID ma sotto queste) fanno scattare l'allarme solo
+# se persistono per SOGLIA_GEO_CONSECUTIVE letture di fila.
+SOGLIA_GEO_ESTREMA_TEMP = 15.0     # °C
+SOGLIA_GEO_ESTREMA_UMID = 30.0     # punti %
 
 # Dopo quante letture consecutive fuori soglia (rispetto alla media di zona)
 # una sede fa scattare l'allarme "sensore guasto" indirizzato al produttore.
 SOGLIA_GEO_CONSECUTIVE = 5
 
 
-def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=None, cfg=None):
+def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_risc=None, forza_raffr=None, cfg=None):
     """
     Calcola lo stato degli attuatori in base alle soglie e
     invia il comando all'ESP32 nel formato che si aspetta:
-    TEMP=1;UMID=0;CO2=1;BUZZER=0
+    RISC=1;RAFFR=0;UMID=0;CO2=1;BUZZER=0
 
-    TEMP=1  → LED temperatura acceso  = serve un intervento sulla temperatura
-              (raffrescamento SE temp_int troppo alta, riscaldamento SE troppo
-              bassa — è un unico LED/pin sul firmware ESP32, non distingue le
-              due direzioni: vedi ESP32_interno.ino, un solo statoTemperatura)
-    TEMP=0  → LED temperatura spento  = temperatura ok
-    UMID=1  → LED umidità acceso      = umidità fuori soglia (SOLO umidità,
+    RISC=1   → LED_TEMPERATURA acceso = serve il riscaldamento (temp_int troppo BASSA)
+    RAFFR=1  → LED_ARIACOND acceso    = serve l'aria condizionata (temp_int troppo ALTA)
+              (dalla scheda hardware aggiornata: prima erano un solo LED/pin
+              che si accendeva in entrambi i casi, vedi ESP32_interno.ino —
+              ora ci sono due LED fisici distinti, uno per direzione)
+    UMID=1   → LED umidità acceso     = umidità fuori soglia (SOLO umidità,
               nessuna condivisione con la temperatura)
-    CO2=1   → LED CO2 acceso          = CO2 elevata
-    BUZZER=1→ buzzer attivo           = allarme critico
+    CO2=1    → LED CO2 acceso         = CO2 elevata
+    BUZZER=1 → buzzer attivo          = allarme critico
 
-    forza_temp: se non None (True/False), sovrascrive la decisione su TEMP
-    calcolata dalla sola soglia fissa. Usato dal blocco ML (vedi on_message)
-    per far arrivare davvero all'ESP32 la raccomandazione del modello
-    (es. "accendi il condizionatore" o "accendi il riscaldamento") anche
-    quando la temperatura istantanea non ha ancora superato/ceduto la soglia
-    fissa — prima questo override non esisteva e il consiglio ML restava
-    solo un numero in dashboard, senza mai tradursi in un comando reale.
+    forza_risc / forza_raffr: se non None (True/False), sovrascrivono la
+    decisione calcolata dalla sola soglia fissa. Usati dal blocco ML (vedi
+    on_message) per far arrivare davvero all'ESP32 la raccomandazione del
+    modello (es. "accendi il condizionatore" o "accendi il riscaldamento")
+    anche quando la temperatura istantanea non ha ancora superato/ceduto la
+    soglia fissa — prima questo override non esisteva e il consiglio ML
+    restava solo un numero in dashboard, senza mai tradursi in un comando
+    reale. Sono due parametri separati (non più un unico forza_temp) perché
+    ora pilotano due LED indipendenti: il modello può consigliare "accendi
+    il riscaldamento" senza dover anche decidere lo stato dell'aria
+    condizionata, e viceversa.
 
     cfg: ConfigurazioneSede della sede (opzionale). Se presente, le soglie
     usate sono quelle specifiche della sede (le stesse lette da
@@ -188,10 +200,14 @@ def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=Non
     soglia_umid_alta  = cfg.soglia_umid_alta  if cfg and cfg.soglia_umid_alta  is not None else SOGLIA_UMID_ALTA
     soglia_co2        = cfg.soglia_co2        if cfg and cfg.soglia_co2        is not None else SOGLIA_CO2_ALTA
 
-    led_temp = 1 if (temp_int is not None and
-                      (temp_int > soglia_temp_alta or temp_int < soglia_temp_bassa)) else 0
-    if forza_temp is not None:
-        led_temp = 1 if forza_temp else 0
+    led_risc = 1 if (temp_int is not None and temp_int < soglia_temp_bassa) else 0
+    if forza_risc is not None:
+        led_risc = 1 if forza_risc else 0
+
+    led_raffr = 1 if (temp_int is not None and temp_int > soglia_temp_alta) else 0
+    if forza_raffr is not None:
+        led_raffr = 1 if forza_raffr else 0
+
     led_umid = 1 if (umid_int is not None and umid_int > soglia_umid_alta) else 0
     led_co2 = 1 if (co2 is not None and co2 > soglia_co2) else 0
     buzzer = 1 if (co2 is not None and co2 > soglia_co2) else 0
@@ -200,7 +216,7 @@ def calcola_e_invia_comandi(mqtt_client, temp_int, umid_int, co2, forza_temp=Non
     if temp_int is not None and temp_int > 30.0:
         buzzer = 1
 
-    comando = f"TEMP={led_temp};UMID={led_umid};CO2={led_co2};BUZZER={buzzer}"
+    comando = f"RISC={led_risc};RAFFR={led_raffr};UMID={led_umid};CO2={led_co2};BUZZER={buzzer}"
     mqtt_client.publish("cantine/urbani/pievepelago/comandi", comando, qos=1)
     print(f"   📡 Comando → ESP32: {comando}")
 
@@ -211,13 +227,11 @@ def calcola_stato_attuatori(temp_int, umid_int, co2, cfg=None):
     per la rappresentazione visiva in dashboard (grafico "Sistemi attivi").
 
     Questa funzione gira per OGNI sede (reale e simulata) e distingue 'ac' e
-    'riscaldamento' come due indicatori SEPARATI, più leggibili per chi
-    guarda la dashboard — ma è solo una distinzione software/informativa.
-    Sull'hardware fisico (solo urbani/pievepelago) le due condizioni pilotano
-    lo STESSO LED_TEMPERATURA (vedi calcola_e_invia_comandi): il firmware
-    ESP32 ha un solo pin per la temperatura, che si accende sia per troppo
-    caldo sia per troppo freddo, e un pin separato e indipendente per
-    l'umidità (nessuna condivisione tra i due).
+    'riscaldamento' come due indicatori SEPARATI in dashboard. Sull'hardware
+    fisico (solo urbani/pievepelago) corrispondono ora a due LED distinti,
+    LED_ARIACOND e LED_TEMPERATURA (vedi calcola_e_invia_comandi e
+    ESP32_interno.ino) — prima della scheda con il LED aggiuntivo pilotavano
+    lo stesso pin, qui restava comunque una distinzione solo informativa.
 
     Ritorna un dizionario con lo stato (0/1) di ogni sistema + le soglie usate.
     """
@@ -485,6 +499,43 @@ class EventoM2M(db.Model):
     messaggio = db.Column(db.String(400))
 
 
+class AllarmeSensore(db.Model):
+    """
+    Allarme "sensore esterno anomalo" mostrato in GIALLO sulla Dashboard di
+    ogni produttore — diverso dagli allarmi CO2 (rossi, con suono, gestiti
+    altrove) e diverso dal log della pagina "Comunicazioni M2M": qui serve
+    uno stato persistente di "presa in carico", non solo un evento di log.
+
+    Scatta per due motivi alternativi (vedi verifica_anomalia_geo_consecutiva):
+    - tipo_scatto='estrema'     → una singola lettura isolata già molto fuori
+                                  norma rispetto alle altre sedi della zona
+                                  (soglia SOGLIA_GEO_ESTREMA_TEMP/_UMID).
+    - tipo_scatto='consecutiva' → una deviazione più moderata ma che si ripete
+                                  per SOGLIA_GEO_CONSECUTIVE letture di fila.
+
+    Niente suono: questo allarme NON passa dalla coda `allarmi_recenti` usata
+    per il beep dell'allarme CO2, proprio perché deve essere un avviso
+    "silenzioso" da controllare con calma, non un'emergenza da segnalare
+    subito con l'audio.
+
+    La presa in carico è per PRODUTTORE (non per singolo utente): una volta
+    cliccato "Presa in carico" da un qualsiasi account di quel produttore,
+    l'allarme sparisce dalla Dashboard per chiunque acceda con quell'account.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    produttore = db.Column(db.String(50))
+    sede = db.Column(db.String(50))
+    grandezza = db.Column(db.String(10))       # 'temp' | 'umid'
+    tipo_scatto = db.Column(db.String(20))     # 'estrema' | 'consecutiva'
+    valore_deviazione = db.Column(db.Float)
+    consecutivi = db.Column(db.Integer)
+    messaggio = db.Column(db.String(400))
+    preso_in_carico = db.Column(db.Boolean, default=False)
+    preso_in_carico_da = db.Column(db.String(100))
+    preso_in_carico_il = db.Column(db.DateTime)
+
+
 class RichiestaCantina(db.Model):
     """
     Richiesta di un produttore per l'aggiunta di una nuova cantina/sede al
@@ -584,6 +635,30 @@ def produttori_autorizzati():
     if ruolo_normalizzato == 'admin':
         return ['urbani', 'rossi', 'bianchi']
     return [ruolo_normalizzato]
+
+
+def autorizzati_con_filtro_prod():
+    """
+    Come produttori_autorizzati(), ma applica anche il filtro opzionale
+    ?prod=<produttore> quando presente nella query string (lo switcher
+    produttore che l'admin usa in hub.html: /?prod=rossi).
+
+    Prima questo blocco era duplicato (e con lievi differenze di rischio di
+    disallineamento) solo dentro home() e vista_sede(): le pagine HTML
+    rispettavano quindi ?prod=, ma gli endpoint JSON polled in live
+    (/api/ml/stato-sedi, /api/ml/allarmi-ml, /api/eventi-m2m/recenti,
+    /api/allarmi/recenti) no — un admin che selezionava "Rossi" vedeva la
+    lista sedi filtrata correttamente, ma i tab "Cruscotti" e "Log" (che si
+    aggiornano via queste API, non via render_template) mostravano comunque
+    i dati di tutti i produttori. Centralizzando qui il filtro, chiunque
+    chiami questa funzione invece di produttori_autorizzati() lo rispetta
+    automaticamente.
+    """
+    autorizzati = produttori_autorizzati()
+    prod_req = request.args.get('prod')
+    if prod_req and prod_req.lower() in autorizzati:
+        return [prod_req.lower()]
+    return autorizzati
 
 
 def get_config_sede(produttore: str, sede: str) -> ConfigurazioneSede:
@@ -850,83 +925,122 @@ _stato_sede: dict[str, dict] = {}
 _stato_allarme_co2: dict[str, bool] = {}
 _stato_allarme_co2_m2m: dict[str, bool] = {}
 
-# ── Allarme "sensore guasto" (GEO M2M, diverso dall'allarme CO2) ────────────
+# ── Allarme "sensore esterno anomalo" (GEO M2M + Dashboard, diverso dal CO2) ─
 # _contatore_geo_sospetto: quante letture DI FILA una sede risulta fuori
-#   soglia rispetto alla media delle altre sedi nello stesso luogo fisico.
-#   Chiave: "produttore/sede" (stesso formato di chiave_sede più sotto).
+#   soglia "normale" rispetto alla media delle altre sedi nello stesso luogo
+#   fisico, PER SINGOLA GRANDEZZA. Chiave: "produttore/sede/grandezza"
+#   (grandezza = 'temp' | 'umid').
 # _stato_allarme_geo_hw: dedup — evita di rimandare l'allarme ad ogni lettura
-#   finché il guasto persiste; si riarma solo quando la sede torna in soglia.
+#   finché l'anomalia persiste; si riarma solo quando la sede torna in soglia.
 _contatore_geo_sospetto: dict[str, int] = {}
 _stato_allarme_geo_hw: dict[str, bool] = {}
 
 
-def verifica_anomalia_geo_consecutiva(produttore, sede, temp_est):
+def _deviazione_geo(sede, campo, valore_corrente):
     """
-    Da chiamare dopo aver salvato una nuova DatoSensore (dentro un
-    app_context, subito dopo il commit principale). Confronta la temperatura
-    esterna appena registrata con la media delle ULTIME letture delle altre
-    sedi nello stesso luogo fisico `sede` (stessa logica di /api/geo/consenso).
-
-    Se la deviazione supera SOGLIA_GEO_DEVIAZIONE per SOGLIA_GEO_CONSECUTIVE
-    letture consecutive, genera un EventoM2M pattern='GEO_HW' indirizzato SOLO
-    al produttore interessato (visibile a lui come un evento 'PROD', vedi
-    evento_m2m_visibile) — diverso dal SENSORE_EST_SOSPETTO pubblico (che
-    segnala la singola lettura sospetta a tutta la zona) e diverso
-    dall'ALLERTA_CO2_PRODUTTORE (che riguarda la qualità del prodotto, non un
-    probabile guasto hardware del sensore esterno).
+    Confronta valore_corrente (temp_est o umid_est della lettura appena
+    arrivata) con la media delle ULTIME letture delle altre sedi nello stesso
+    luogo fisico `sede` (stessa logica di /api/geo/consenso).
+    Ritorna None se non c'è materiale sufficiente per il confronto.
     """
-    if temp_est is None:
-        return
-    chiave = f"{produttore}/{sede}"
-
+    if valore_corrente is None:
+        return None
     subq = (db.session.query(func.max(DatoSensore.id).label('max_id'))
             .filter(DatoSensore.sede == sede)
             .group_by(DatoSensore.produttore).subquery())
     letture = (db.session.query(DatoSensore)
                .join(subq, DatoSensore.id == subq.c.max_id).all())
-    letture = [l for l in letture if l.temp_est is not None]
+    valori = [getattr(l, campo) for l in letture]
+    valori = [v for v in valori if v is not None]
+    if len(valori) < 2:
+        return None
+    media = sum(valori) / len(valori)
+    return abs(valore_corrente - media)
 
-    if len(letture) < 2:
-        # Nessun altro twin nella stessa zona con cui confrontarsi: azzera
-        # e non fare nulla, come per il consenso mostrato in dashboard.
-        _contatore_geo_sospetto[chiave] = 0
-        return
 
-    media = sum(l.temp_est for l in letture) / len(letture)
-    deviazione = abs(temp_est - media)
-    sospetto = deviazione > SOGLIA_GEO_DEVIAZIONE
+def verifica_anomalia_geo_consecutiva(produttore, sede, temp_est, umid_est):
+    """
+    Da chiamare dopo aver salvato una nuova DatoSensore (dentro un
+    app_context, subito dopo il commit principale). Controlla, per
+    temperatura E umidità esterna separatamente, se questa sede si discosta
+    troppo dalle altre sedi dello stesso luogo fisico `sede`.
 
-    if sospetto:
-        _contatore_geo_sospetto[chiave] = _contatore_geo_sospetto.get(chiave, 0) + 1
-    else:
-        _contatore_geo_sospetto[chiave] = 0
-        _stato_allarme_geo_hw[chiave] = False  # rientrato: pronto per un futuro nuovo allarme
+    Due modi di scatto, indipendenti (basta uno dei due):
+    - "estrema": la deviazione supera SOGLIA_GEO_ESTREMA_TEMP/_UMID già alla
+      PRIMA lettura fuori norma → allarme immediato, non serve ripetizione.
+    - "consecutiva": la deviazione supera la soglia più bassa
+      SOGLIA_GEO_DEVIAZIONE/_UMID per SOGLIA_GEO_CONSECUTIVE letture di fila.
 
-    consecutivi = _contatore_geo_sospetto[chiave]
+    Quando scatta, genera DUE cose distinte:
+    1) un EventoM2M pattern='GEO_HW' sulla pagina "Comunicazioni M2M",
+       visibile solo al produttore interessato (come un evento 'PROD');
+    2) un AllarmeSensore per la Dashboard: giallo, SENZA suono (non passa da
+       allarmi_recenti, che serve solo al beep del CO2), con pulsante di
+       presa in carico.
 
-    if consecutivi >= SOGLIA_GEO_CONSECUTIVE and not _stato_allarme_geo_hw.get(chiave, False):
-        messaggio = (f"La sede {sede} di {produttore} registra un valore anomalo "
-                     f"(Δ{deviazione:.1f}°C dalla media di zona) da {consecutivi} letture "
-                     f"consecutive: probabile guasto del sensore esterno, non un picco isolato.")
+    Diverso in ogni caso dal SENSORE_EST_SOSPETTO pubblico (singola lettura
+    sospetta segnalata a tutta la zona) e dall'ALLERTA_CO2_PRODUTTORE (qualità
+    del prodotto, non un probabile problema del sensore esterno).
+    """
+    grandezze = [
+        ('temp', temp_est, 'temp_est', SOGLIA_GEO_DEVIAZIONE, SOGLIA_GEO_ESTREMA_TEMP, '°C', 'temperatura'),
+        ('umid', umid_est, 'umid_est', SOGLIA_GEO_DEVIAZIONE_UMID, SOGLIA_GEO_ESTREMA_UMID, '%', 'umidità'),
+    ]
+
+    for grandezza, valore, campo, soglia_normale, soglia_estrema, unita, nome in grandezze:
+        chiave = f"{produttore}/{sede}/{grandezza}"
+
+        deviazione = _deviazione_geo(sede, campo, valore)
+        if deviazione is None:
+            # Niente da confrontare (dato mancante o nessun altro twin in
+            # zona): azzera il contatore, come per il consenso in dashboard.
+            _contatore_geo_sospetto[chiave] = 0
+            continue
+
+        sospetto = deviazione > soglia_normale
+        estrema = deviazione > soglia_estrema
+
+        if sospetto:
+            _contatore_geo_sospetto[chiave] = _contatore_geo_sospetto.get(chiave, 0) + 1
+        else:
+            _contatore_geo_sospetto[chiave] = 0
+            _stato_allarme_geo_hw[chiave] = False  # rientrato: pronto per un futuro nuovo allarme
+            continue
+
+        consecutivi = _contatore_geo_sospetto[chiave]
+        gia_inviato = _stato_allarme_geo_hw.get(chiave, False)
+
+        if gia_inviato or not (estrema or consecutivi >= SOGLIA_GEO_CONSECUTIVE):
+            continue
+
+        tipo_scatto = 'estrema' if estrema else 'consecutiva'
+        if tipo_scatto == 'estrema':
+            messaggio = (f"La sede {sede} di {produttore} registra una {nome} estrema "
+                         f"(scarto di {deviazione:.1f}{unita} dalla media di zona).")
+        else:
+            messaggio = (f"La sede {sede} di {produttore} registra una {nome} anomala "
+                         f"(scarto di {deviazione:.1f}{unita}) da {consecutivi} letture consecutive.")
+
+        # 1) Log sulla pagina "Comunicazioni M2M" — solo per quel produttore.
         db.session.add(EventoM2M(
             pattern='GEO_HW',
             tipo='ALLARME_SENSORE_GUASTO_PRODUTTORE',
-            mittente=chiave,
-            destinatari=chiave,
+            mittente=f"{produttore}/{sede}",
+            destinatari=f"{produttore}/{sede}",
             valore=deviazione,
             messaggio=messaggio
         ))
+
+        # 2) Allarme giallo in Dashboard — niente allarmi_recenti: nessun suono.
+        db.session.add(AllarmeSensore(
+            produttore=produttore, sede=sede, grandezza=grandezza,
+            tipo_scatto=tipo_scatto, valore_deviazione=deviazione,
+            consecutivi=consecutivi, messaggio=messaggio
+        ))
         db.session.commit()
 
-        allarmi_recenti.append({
-            "tipo": "SENSORE_GUASTO_M2M",
-            "produttore": produttore, "sede": sede,
-            "valore": deviazione, "messaggio": messaggio,
-            "ts": iso_utc(datetime.utcnow())
-        })
         _stato_allarme_geo_hw[chiave] = True
-        print(f"🔧 [GEO M2M] Allarme sensore guasto per {chiave}: "
-              f"{consecutivi} letture consecutive fuori soglia (Δ{deviazione:.1f}°C)")
+        print(f"🟡 [GEO] Allarme sensore ({tipo_scatto}, {grandezza}) per {chiave}: {messaggio}")
 
 
 # Contatore cicli per ogni sede — usato per eseguire il GestoreAllarmiIntelligente
@@ -1187,22 +1301,24 @@ def on_message(client, userdata, msg):
                     # calcola_e_invia_comandi() è già stato chiamato più sopra
                     # (fast-path, appena arriva un dato interno) ma usa SOLO le
                     # soglie fisse: se il modello ML raccomanda di intervenire
-                    # sulla temperatura (timer_ac_minuti > 0 per il freddo,
-                    # timer_risc_minuti > 0 per il caldo — es. perché il trend
-                    # sta peggiorando anche se la soglia non è ancora superata)
-                    # quel consiglio restava solo in dashboard e non veniva MAI
-                    # inviato all'attuatore reale. Qui, ora che il timer ML è
-                    # pronto, rimandiamo il comando forzando il LED_TEMPERATURA
-                    # (un solo pin per caldo e freddo, vedi ESP32_interno.ino)
-                    # in base al consiglio ML.
+                    # sulla temperatura (timer_ac_minuti > 0 = serve l'aria
+                    # condizionata perché fa troppo caldo, timer_risc_minuti > 0
+                    # = serve il riscaldamento perché fa troppo freddo — es.
+                    # perché il trend sta peggiorando anche se la soglia non è
+                    # ancora superata) quel consiglio restava solo in dashboard
+                    # e non veniva MAI inviato all'attuatore reale. Qui, ora che
+                    # il timer ML è pronto, rimandiamo il comando forzando il LED
+                    # giusto: LED_ARIACOND per il timer AC, LED_TEMPERATURA per
+                    # il timer riscaldamento (due pin fisici separati sulla
+                    # scheda aggiornata, vedi ESP32_interno.ino — prima erano un
+                    # solo LED e i due consigli ML finivano nello stesso flag).
                     if produttore == 'urbani' and sede == 'pievepelago':
-                        temp_richiede_intervento_ml = (
-                            (ris_timer.get('timer_ac_minuti') or 0) > 0 or
-                            (ris_timer.get('timer_risc_minuti') or 0) > 0
-                        )
+                        forza_raffr_ml = (ris_timer.get('timer_ac_minuti') or 0) > 0
+                        forza_risc_ml = (ris_timer.get('timer_risc_minuti') or 0) > 0
                         calcola_e_invia_comandi(
                             client, temp_int, umid_int, valore_co2,
-                            forza_temp=temp_richiede_intervento_ml,
+                            forza_risc=forza_risc_ml,
+                            forza_raffr=forza_raffr_ml,
                             cfg=cfg
                         )
 
@@ -1296,11 +1412,12 @@ def on_message(client, userdata, msg):
 
                     db.session.commit()
 
-                    # Allarme "sensore guasto" GEO — indipendente e diverso da
-                    # quello CO2: guarda solo se QUESTA lettura, confrontata con
-                    # le altre sedi della stessa zona, prosegue un pattern di
-                    # deviazione persistente (vedi funzione per i dettagli).
-                    verifica_anomalia_geo_consecutiva(produttore, sede, temp_est)
+                    # Allarme "sensore anomalo" GEO — indipendente e diverso
+                    # da quello CO2: guarda se QUESTA lettura (temperatura O
+                    # umidità esterna) è estrema o, in modo più moderato,
+                    # persistente rispetto alle altre sedi della stessa zona
+                    # (vedi funzione per i dettagli dei due modi di scatto).
+                    verifica_anomalia_geo_consecutiva(produttore, sede, temp_est, payload.get('umid_est'))
 
                     # ML 6: GestoreAllarmiIntelligente ogni 5 cicli
                     if _MODULI_ML_DISPONIBILI and _gestore is not None:
@@ -1420,12 +1537,7 @@ mqtt_client.loop_start()
 @app.route('/')
 @login_required
 def home():
-    autorizzati = produttori_autorizzati()
-    # --- NUOVO BLOCCO AGGIUNTO ---
-    prod_req = request.args.get('prod')
-    if prod_req and prod_req.lower() in autorizzati:
-        autorizzati = [prod_req.lower()]
-    # -----------------------------
+    autorizzati = autorizzati_con_filtro_prod()
     subq = (
         db.session.query(DatoSensore.produttore, DatoSensore.sede,
                          func.max(DatoSensore.id).label('max_id'))
@@ -1464,12 +1576,7 @@ def home():
 @app.route('/sede/<nome_sede>')
 @login_required
 def vista_sede(nome_sede):
-    autorizzati = produttori_autorizzati()
-    # --- Controllo sugli autorizzati
-    prod_req = request.args.get('prod')
-    if prod_req and prod_req.lower() in autorizzati:
-        autorizzati = [prod_req.lower()]
-    # -------------------------------
+    autorizzati = autorizzati_con_filtro_prod()
     dati_sede = (DatoSensore.query
                  .filter(DatoSensore.sede == nome_sede,
                          DatoSensore.produttore.in_(autorizzati))
@@ -1601,12 +1708,15 @@ def allerte_zona():
     Pagina che mostra le comunicazioni M2M tra twin — dimostra Legge 2 Vezzani.
     Regole di visibilità: vedi evento_m2m_visibile().
     """
-    autorizzati = produttori_autorizzati()
+    autorizzati = autorizzati_con_filtro_prod()
     query = EventoM2M.query.order_by(EventoM2M.timestamp.desc()).limit(100)
     eventi = query.all()
 
-    if (current_user.ruolo or '').strip().lower() != 'admin':
-        eventi = [e for e in eventi if evento_m2m_visibile(e, autorizzati)]
+    # Stesso ragionamento di api_eventi_m2m(): applicare sempre il filtro
+    # (anche per l'admin) è corretto perché evento_m2m_visibile() lascia
+    # comunque passare tutto il pattern GEO (pubblico), e se l'admin non ha
+    # selezionato un produttore 'autorizzati' contiene già tutti e tre.
+    eventi = [e for e in eventi if evento_m2m_visibile(e, autorizzati)]
 
     return render_template('allerte_zona.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
@@ -1622,7 +1732,7 @@ def api_allarmi_recenti():
     Il frontend fa polling ogni 5s su questo endpoint.
     Se ci sono nuovi allarmi, suona il buzzer via Web Audio API.
     """
-    autorizzati = produttori_autorizzati()
+    autorizzati = autorizzati_con_filtro_prod()
     filtrati = [a for a in allarmi_recenti if a['produttore'] in autorizzati]
     return jsonify(filtrati)
 
@@ -1631,7 +1741,7 @@ def api_allarmi_recenti():
 @login_required
 def api_allarmi_clear():
     """Il frontend chiama questo dopo aver suonato, per non risuonare lo stesso allarme."""
-    autorizzati = produttori_autorizzati()
+    autorizzati = autorizzati_con_filtro_prod()
     da_rimuovere = [a for a in allarmi_recenti if a['produttore'] in autorizzati]
     for a in da_rimuovere:
         try:
@@ -1639,6 +1749,56 @@ def api_allarmi_clear():
         except ValueError:
             pass
     return jsonify({"ok": True})
+
+
+@app.route('/api/allarmi-sensore/attivi')
+@login_required
+def api_allarmi_sensore_attivi():
+    """
+    Allarmi "sensore esterno anomalo" ANCORA NON presi in carico, per i
+    produttori autorizzati all'utente corrente. Pensato per il banner GIALLO
+    in cima alla Dashboard (index/home), diverso dal buzzer di
+    /api/allarmi/recenti: qui non c'è audio, il frontend deve solo mostrare i
+    banner e lasciare che l'utente clicchi "Presa in carico".
+    """
+    autorizzati = autorizzati_con_filtro_prod()
+    righe = (AllarmeSensore.query
+             .filter(AllarmeSensore.produttore.in_(autorizzati),
+                     AllarmeSensore.preso_in_carico.is_(False))
+             .order_by(AllarmeSensore.timestamp.desc())
+             .all())
+    return jsonify([{
+        'id': a.id,
+        'timestamp': iso_utc(a.timestamp),
+        'produttore': a.produttore,
+        'sede': a.sede,
+        'grandezza': a.grandezza,          # 'temp' | 'umid'
+        'tipo_scatto': a.tipo_scatto,      # 'estrema' | 'consecutiva'
+        'valore_deviazione': round(a.valore_deviazione, 2) if a.valore_deviazione is not None else None,
+        'consecutivi': a.consecutivi,
+        'messaggio': a.messaggio,
+    } for a in righe])
+
+
+@app.route('/api/allarmi-sensore/<int:allarme_id>/presa-in-carico', methods=['POST'])
+@login_required
+def api_allarme_sensore_presa_in_carico(allarme_id):
+    """
+    Segna l'allarme come "preso in carico". Vale per l'intero produttore, non
+    solo per l'utente che clicca: una volta gestito da un qualsiasi account
+    di quel produttore, sparisce dalla Dashboard per tutti gli account dello
+    stesso produttore.
+    """
+    a = AllarmeSensore.query.get_or_404(allarme_id)
+    autorizzati = produttori_autorizzati()
+    if a.produttore not in autorizzati:
+        return jsonify({'error': 'Non autorizzato per questo produttore'}), 403
+
+    a.preso_in_carico = True
+    a.preso_in_carico_da = current_user.username
+    a.preso_in_carico_il = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/sede/<nome_sede>/latest')
@@ -1679,7 +1839,7 @@ def api_latest(nome_sede):
 @app.route('/api/ml/stato-sedi')
 @login_required
 def api_ml_stato_sedi():
-    autorizzati = produttori_autorizzati()
+    autorizzati = autorizzati_con_filtro_prod()
     subq = (
         db.session.query(DatoSensore.produttore, DatoSensore.sede,
                          func.max(DatoSensore.id).label('max_id'))
@@ -1721,7 +1881,7 @@ def api_ml_stato_sedi():
 @app.route('/api/ml/allarmi-ml')
 @login_required
 def api_ml_allarmi():
-    autorizzati = produttori_autorizzati()
+    autorizzati = autorizzati_con_filtro_prod()
     risultati = (RisultatoML.query
                  .filter(RisultatoML.produttore.in_(autorizzati))
                  .order_by(RisultatoML.timestamp.desc()).limit(50).all())
@@ -1783,11 +1943,15 @@ def api_ml_fascia():
 @app.route('/api/eventi-m2m/recenti')
 @login_required
 def api_eventi_m2m():
-    autorizzati = produttori_autorizzati()
+    autorizzati = autorizzati_con_filtro_prod()
     eventi = (EventoM2M.query
               .order_by(EventoM2M.timestamp.desc()).limit(20).all())
-    if (current_user.ruolo or '').strip().lower() != 'admin':
-        eventi = [e for e in eventi if evento_m2m_visibile(e, autorizzati)]
+    # evento_m2m_visibile() lascia sempre passare il pattern GEO (dato
+    # pubblico) e filtra GEO_HW/PROD in base a 'autorizzati' — applicarlo
+    # sempre (anche per l'admin) è corretto: se l'admin non ha scelto un
+    # produttore, autorizzati contiene tutti e tre e il risultato non
+    # cambia; se ha selezionato "Rossi", vede solo i GEO_HW/PROD di Rossi.
+    eventi = [e for e in eventi if evento_m2m_visibile(e, autorizzati)]
     return jsonify([{
         'id': e.id, 'timestamp': iso_utc(e.timestamp),
         'pattern': e.pattern, 'tipo': e.tipo,
@@ -1955,10 +2119,12 @@ def api_geo_consenso():
                 'deviazione': round(deviazione, 2),
                 'sospetto': deviazione > SOGLIA_GEO_DEVIAZIONE,
                 # Letture consecutive fuori soglia per questo produttore in
-                # questa zona — vedi verifica_anomalia_geo_consecutiva(), usato
-                # dal frontend per evidenziare il caso "possibile guasto" prima
-                # ancora che scatti l'allarme diretto al produttore.
-                'consecutivi': _contatore_geo_sospetto.get(f"{l.produttore}/{l.sede}", 0),
+                # questa zona (temperatura e umidità separate) — vedi
+                # verifica_anomalia_geo_consecutiva(), usato dal frontend per
+                # evidenziare il caso "possibile guasto" prima ancora che
+                # scatti l'allarme in Dashboard.
+                'consecutivi': _contatore_geo_sospetto.get(f"{l.produttore}/{l.sede}/temp", 0),
+                'consecutivi_umid': _contatore_geo_sospetto.get(f"{l.produttore}/{l.sede}/umid", 0),
                 'timestamp': iso_utc(l.timestamp),
             })
         voci.sort(key=lambda v: v['produttore'])

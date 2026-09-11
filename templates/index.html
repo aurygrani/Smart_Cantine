@@ -317,6 +317,19 @@
             height: 200px;
         }
 
+        /* ── TESTO SPIEGAZIONE GRAFICO ENERGETICO ── */
+        .grafico-spiegazione {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.72rem;
+            color: var(--testo-soft);
+            line-height: 1.5;
+            margin: -0.3rem 0 0.8rem 0;
+        }
+        .grafico-spiegazione strong {
+            color: var(--testo);
+            font-weight: 500;
+        }
+
         /* ── GRAFICO TEMPERATURE STILE GRAFANA ── */
         .grafana-card {
             background: #4A1B2E;
@@ -402,13 +415,11 @@
             font-size: 0.9rem;
         }
 
-        /* Righe tabella colorate per stato */
         tr.row-danger { background: #FEF2F2 !important; }
         tr.row-warn   { background: #FFFBEB !important; }
         td.cell-danger { color: var(--danger) !important; font-weight: 500; }
         td.cell-warn   { color: var(--warn)   !important; font-weight: 500; }
 
-        /* Banner allarme dinamico */
         #alarm-banner-dinamico {
             display: none;
             border-radius: 0 var(--r) var(--r) 0;
@@ -426,7 +437,6 @@
 
         @keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
 
-        /* Flash animation quando un valore cambia in tempo reale */
         @keyframes flash-update {
             0%   { opacity: 0.3; transform: scale(0.97); }
             50%  { opacity: 1;   transform: scale(1.03); }
@@ -436,7 +446,6 @@
             animation: flash-update 0.4s ease-out;
         }
 
-        /* Indicatore ultimo aggiornamento */
         .live-ts {
             font-size: 0.62rem;
             color: rgba(245,239,224,0.35);
@@ -444,7 +453,6 @@
             margin-top: 1rem;
         }
 
-        /* ── LEGENDA DATI REALI vs PROIEZIONI ML ── */
         .chart-legend {
             display: flex;
             flex-wrap: wrap;
@@ -468,7 +476,6 @@
             height: 2px;
         }
 
-        /* ── PANNELLO SUGGERIMENTI ML ── */
         .ml-panel {
             background: #fff;
             border-radius: var(--r);
@@ -526,7 +533,6 @@
         .ml-metric.warn   .ml-value { color: var(--warn); }
         .ml-metric.danger .ml-value { color: var(--danger); }
 
-        /* ── PANNELLO SISTEMI ATTIVI (LED + buzzer) ── */
         .sistemi-panel {
             background: #fff;
             border-radius: var(--r);
@@ -609,7 +615,7 @@
             50%      { box-shadow: 0 0 0 9px rgba(163,45,45,0); }
         }
 
-        /* ── PANNELLO STATO DELLA SEDE (punteggio ML: Buona/Media/Cattiva) ── */
+        /* ── PANNELLO STATO DELLA SEDE (Classe Grande a Sinistra + Tendina Dettagli) ── */
         .stato-sede-panel {
             background: #fff;
             border-radius: var(--r);
@@ -629,51 +635,9 @@
             color: var(--testo-soft);
             margin-bottom: 1.1rem;
         }
-        .stato-sede-body {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2rem;
-            align-items: center;
-        }
-        .gauge-wrap {
-            position: relative;
-            width: 140px; height: 140px;
-            flex-shrink: 0;
-        }
-        .gauge-anello {
-            width: 140px; height: 140px;
-            border-radius: 50%;
-            background: conic-gradient(var(--gauge-colore, #999) calc(var(--gauge-pct, 0) * 1%), #EAE0CC 0);
-            display: flex; align-items: center; justify-content: center;
-            transition: background 0.6s ease;
-        }
-        .gauge-centro {
-            width: 106px; height: 106px;
-            border-radius: 50%;
-            background: #fff;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-        }
-        .gauge-punteggio {
-            font-size: 1.8rem;
-            font-weight: 300;
-            color: var(--testo);
-            line-height: 1;
-        }
-        .gauge-etichetta {
-            margin-top: 0.3rem;
-            font-size: 0.68rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            font-weight: 600;
-        }
-        .gauge-etichetta.verde  { color: var(--ok); }
-        .gauge-etichetta.giallo { color: var(--warn); }
-        .gauge-etichetta.rosso  { color: var(--danger); }
 
         .fattori-lista {
             flex: 1;
-            min-width: 220px;
             display: flex;
             flex-direction: column;
             gap: 0.65rem;
@@ -682,11 +646,15 @@
             display: flex;
             flex-direction: column;
             gap: 0.25rem;
+            background: #FAF7F0;
+            padding: 0.6rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--avorio-md);
         }
         .fattore-riga .fattore-testa {
             display: flex;
             justify-content: space-between;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             color: var(--testo-soft);
         }
         .fattore-riga .fattore-testa strong {
@@ -698,6 +666,7 @@
             border-radius: 4px;
             background: #EAE0CC;
             overflow: hidden;
+            margin: 0.3rem 0;
         }
         .fattore-barra-riempimento {
             height: 100%;
@@ -706,7 +675,6 @@
             transition: width 0.6s ease;
         }
 
-        /* ── Badge fonte del dato (sensore diretto vs output modello ML) ── */
         .fattore-fonte {
             display: inline-flex; align-items: center; gap: 0.25rem;
             font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase;
@@ -716,20 +684,17 @@
         .fattore-fonte.sensore { background: #E1F0EE; color: #0E7C86; }
         .fattore-fonte.ml      { background: #EFE8F7; color: #5B3FA0; }
 
-        /* ── Riga di dettaglio: valore misurato + riferimento/target ── */
         .fattore-dettaglio {
             display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem;
             font-size: 0.66rem; color: var(--testo-soft);
         }
         .fattore-dettaglio strong { color: var(--testo); font-weight: 500; }
 
-        /* ── Regola di calcolo (per dettagliare "come" si arriva al punteggio) ── */
         .fattore-regola {
             font-size: 0.63rem; color: var(--testo-soft); font-style: italic;
             opacity: 0.85;
         }
 
-        /* ── Box metodologia collassabile (legenda generale del punteggio) ── */
         .metodologia-box {
             margin-top: 1rem;
             border: 1px solid var(--avorio-md);
@@ -773,19 +738,17 @@
 <body>
 
 <aside class="sidebar">
-    <!-- TITOLO CONDIZIONALE -->
     <a href="/" class="brand">
         {% if ruolo == 'admin' %}
             SmartCantine
         {% else %}
-            Cantine {{ dati[0].produttore | capitalize if dati else '—' }}
+            Cantine {{ dati[0].produttore | capitalize if dati else '' }}
         {% endif %}
         <span>Monitoraggio IoT</span>
     </a>
 
     <div class="sidebar-divider"></div>
 
-    <!-- MENU CONDIZIONALE -->
     {% if ruolo == 'admin' %}
         <p class="sidebar-label">Produttori</p>
         <nav>
@@ -853,10 +816,9 @@
     </div>
     {% endif %}
 
-    <!-- Banner allarme dinamico (aggiornato via JS senza ricaricare) -->
     <div id="alarm-banner-dinamico"></div>
 
-    <!-- Live panel — i valori vengono aggiornati in tempo reale via JS -->
+    <!-- Live panel -->
     <div class="live-panel">
         <div class="live-badge">Live</div>
         <div class="live-metrics">
@@ -900,69 +862,65 @@
         <div class="live-ts">Ultimo aggiornamento: <span id="live-ts">—</span></div>
     </div>
 
-    <!-- Pannello "Stato della sede": punteggio sintetico Buona/Media/Cattiva,
-         combina soglie fisiche + output dei modelli ML (trend vino, efficienza) -->
+    <!-- Pannello Stato della Sede: Classe di Efficienza (Stile Elettrodomestici / Nutri-Score) -->
     <div class="stato-sede-panel">
-        <p class="chart-title">🏆 Stato della sede</p>
-        <p class="ml-sub">Punteggio sintetico da soglie fisiche e modelli ML (trend vino, efficienza energetica).</p>
-        <div class="stato-sede-body">
-            <div class="gauge-wrap">
-                <div id="gauge-anello" class="gauge-anello"
-                     style="--gauge-pct: {{ stato_sede.punteggio if stato_sede else 0 }}; --gauge-colore: {% if stato_sede %}{% if stato_sede.colore == 'verde' %}#1D9E75{% elif stato_sede.colore == 'giallo' %}#BA7517{% else %}#A32D2D{% endif %}{% else %}#999{% endif %};">
-                    <div class="gauge-centro">
-                        <span id="gauge-punteggio" class="gauge-punteggio">{{ "%.0f"|format(stato_sede.punteggio) if stato_sede else '—' }}</span>
-                        <span id="gauge-etichetta" class="gauge-etichetta {{ stato_sede.colore if stato_sede else '' }}">{{ stato_sede.stato if stato_sede else 'N/D' }}</span>
-                    </div>
-                </div>
-            </div>
-            <div id="fattori-lista" class="fattori-lista">
-                {% if stato_sede %}
-                {% for f in stato_sede.fattori %}
-                <div class="fattore-riga" data-nome="{{ f.nome }}">
-                    <div class="fattore-testa">
-                        <span>{{ f.nome }}<span class="fattore-fonte {{ f.fonte }}">{{ '🔬 sensore' if f.fonte == 'sensore' else '🤖 ML' }}</span></span>
-                        <strong>{{ "%.0f"|format(f.punti) }}/{{ f.max }}</strong>
-                    </div>
-                    <div class="fattore-barra-sfondo"><div class="fattore-barra-riempimento" style="width: {{ (f.punti / f.max * 100) if f.max else 0 }}%"></div></div>
-                    <div class="fattore-dettaglio">
-                        <span>Misurato: <strong>{{ f.valore }}</strong></span>
-                        <span>Riferimento: <strong>{{ f.riferimento }}</strong></span>
-                    </div>
-                    <div class="fattore-regola">{{ f.regola }}</div>
-                </div>
-                {% endfor %}
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
+            <p class="chart-title" style="margin:0;">⚡ Classe di Efficienza Energetica & Termica</p>
+            <span style="font-size: 0.65rem; color: var(--testo-soft);">Modello predittivo ML</span>
+        </div>
+        <p class="ml-sub">Valutazione strutturale basata sul delta termico e consumo attuatori.</p>
 
-                <details class="metodologia-box">
-                    <summary>ℹ️ Come si calcola questo punteggio?</summary>
-                    <div class="metodologia-corpo">
-                        Il punteggio è la somma di 5 fattori pesati (max 100 punti totali), ciascuno confrontato
-                        con il proprio target o soglia configurata per la sede. I fattori 🔬 derivano
-                        direttamente dai sensori (temperatura, umidità, CO₂); i fattori 🤖 derivano
-                        dall'output dei modelli ML (proiezione della temperatura del vino, classificazione
-                        dell'efficienza energetica).
-                        <table>
-                            <tr><td>Temperatura</td><td>30 pt</td></tr>
-                            <tr><td>CO₂</td><td>25 pt</td></tr>
-                            <tr><td>Umidità</td><td>20 pt</td></tr>
-                            <tr><td>Trend vino (ML)</td><td>15 pt</td></tr>
-                            <tr><td>Efficienza energetica (ML)</td><td>10 pt</td></tr>
-                        </table>
-                        <div style="margin-top:0.6rem;">
-                            <span class="soglia-pill verde">≥ 75 Buona</span>
-                            <span class="soglia-pill giallo">45–74 Media</span>
-                            <span class="soglia-pill rosso">&lt; 45 Cattiva</span>
+        <!-- Box principale stile Nutri-Score / Elettrodomestici (Grande a sinistra) -->
+        <div style="display: flex; align-items: center; gap: 1.5rem; background: #FAF7F0; padding: 1rem 1.25rem; border-radius: 8px; border: 1px solid var(--avorio-md); margin-top: 0.75rem;">
+            <div style="background: {% if stato_sede and stato_sede.colore == 'verde' %}var(--ok){% elif stato_sede and stato_sede.colore == 'giallo' %}var(--warn){% else %}var(--danger){% endif %}; color: #fff; font-family: 'Cormorant Garamond', serif; font-size: 2.2rem; font-weight: 600; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); flex-shrink: 0;">
+                {% if stato_sede and stato_sede.punteggio > 75 %}A{% elif stato_sede and stato_sede.punteggio > 45 %}B{% else %}C{% endif %}
+            </div>
+            <div style="flex: 1;">
+                <div style="font-size: 0.88rem; font-weight: 600; color: var(--testo); margin-bottom: 0.15rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                    {% if stato_sede and stato_sede.punteggio > 75 %}Ottimale (Classe A){% elif stato_sede and stato_sede.punteggio > 45 %}Buono / Media (Classe B){% else %}Critico (Classe C){% endif %}
+                </div>
+                <div style="font-size: 0.72rem; color: var(--testo-soft);">Punteggio complessivo calcolato: <strong>{{ "%.0f"|format(stato_sede.punteggio) if stato_sede else '—' }}/100</strong></div>
+            </div>
+        </div>
+
+        <div style="margin-top: 0.75rem;">
+            {% if stato_sede %}
+            <!-- Menu a tendina per i dettagli analitici delle fonti e dei fattori -->
+            <details class="metodologia-box" style="margin-top: 0;">
+                <summary>📊 Mostra dettaglio analitico dei fattori e fonti (Sensori vs ML)</summary>
+                <div class="metodologia-corpo" style="padding-top: 0.75rem;">
+                    <div class="fattori-lista">
+                        {% for f in stato_sede.fattori %}
+                        <div class="fattore-riga" style="margin-bottom: 0.5rem;">
+                            <div class="fattore-testa">
+                                <span>
+                                    <strong>{{ f.nome }}</strong>
+                                    <span class="fattore-fonte {{ f.fonte }}">{{ '🔬 sensore' if f.fonte == 'sensore' else '🤖 ML' }}</span>
+                                </span>
+                                <strong style="color: var(--bordeaux);">{{ "%.0f"|format(f.punti) }}/{{ f.max }} pt</strong>
+                            </div>
+                            <div class="fattore-barra-sfondo"><div class="fattore-barra-riempimento" style="width: {{ (f.punti / f.max * 100) if f.max else 0 }}%"></div></div>
+                            <div class="fattore-dettaglio">
+                                <span>Misurato: <strong>{{ f.valore }}</strong></span>
+                                <span>Riferimento: <strong>{{ f.riferimento }}</strong></span>
+                            </div>
+                            <div class="fattore-regola">{{ f.regola }}</div>
                         </div>
+                        {% endfor %}
                     </div>
-                </details>
 
-                {% else %}
-                <p style="font-size:0.75rem; color:var(--testo-soft);">Nessun dato ancora disponibile per questa sede.</p>
-                {% endif %}
-            </div>
+                    <div style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px dashed var(--avorio-md); font-size: 0.65rem; color: var(--testo-soft);">
+                        <strong>Pesi di calcolo (max 100 pt):</strong> Temperatura (30) · CO₂ (25) · Umidità (20) · Trend vino ML (15) · Efficienza energetica ML (10).
+                    </div>
+                </div>
+            </details>
+            {% else %}
+            <p style="font-size:0.75rem; color:var(--testo-soft);">Nessun dato ancora disponibile per questa sede.</p>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Pannello sistemi attivi: LED (raffrescamento, riscaldamento, umidità, CO₂) + buzzer -->
+    <!-- Pannello sistemi attivi -->
     <div class="sistemi-panel">
         <p class="chart-title">🔌 Sistemi attivi</p>
         <p class="ml-sub">Stato in tempo reale degli attuatori collegati all'ESP32, secondo le soglie della sede.</p>
@@ -995,7 +953,7 @@
         </div>
     </div>
 
-    <!-- Pannello suggerimenti dei modelli ML (timer impianti, trend, minuti alla soglia) -->
+    <!-- Pannello suggerimenti dei modelli ML -->
     <div class="ml-panel">
         <p class="chart-title">🤖 Modelli ML — proiezioni e suggerimenti</p>
         <p class="ml-sub">Output calcolati dal server ad ogni ciclo, non dai sensori diretti.</p>
@@ -1070,7 +1028,7 @@
     {% if fasce_sede_json %}
     <div class="chart-card" style="margin-bottom:1.5rem;">
         <p class="chart-title">Andamento fascia energetica — isolamento vs temperatura esterna</p>
-        <p class="ml-sub" style="margin:-0.3rem 0 0.6rem;">
+        <p class="grafico-spiegazione">
             Δ = |interna − esterna|: con buon isolamento resta alto anche quando fuori fa molto
             freddo o molto caldo. Il colore di ogni punto è la fascia (🟢 A · 🟠 B · 🔴 C) di quel momento.
         </p>
@@ -1144,12 +1102,6 @@
 </main>
 
 <script>
-// I timestamp arrivano dal server come ISO-8601 con offset esplicito (es.
-// "...+00:00", vero UTC) — vanno sempre convertiti al fuso italiano per la
-// visualizzazione, MAI tagliati come stringa (altrimenti si mostra l'orario
-// UTC "nudo", sbagliato di 1-2h rispetto all'ora locale). Definite qui fuori
-// da qualunque blocco condizionale perché usate anche da pollLive(), che
-// gira sempre (pure quando non c'è ancora storico da graficare).
 function oraLocale(iso) {
     if (!iso) return '';
     return new Date(iso).toLocaleTimeString('it-IT', {
@@ -1162,9 +1114,6 @@ function oraLocaleConSecondi(iso) {
         timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
 }
-// Stesso formato del filtro Jinja ora_locale() lato server (default '%d/%m %H:%M:%S'),
-// usata per costruire le righe nuove della tabella "Storico campionamenti" via JS,
-// così coincidono con quelle già renderizzate server-side al caricamento pagina.
 function formattaOraTabella(iso) {
     if (!iso) return '';
     const giornoMese = new Date(iso).toLocaleDateString('it-IT', {
@@ -1173,19 +1122,8 @@ function formattaOraTabella(iso) {
     return `${giornoMese} ${oraLocaleConSecondi(iso)}`;
 }
 
-// Tiene traccia dell'ultimo campionamento già mostrato nella tabella "Storico
-// campionamenti", per evitare di inserire due volte la stessa riga quando
-// pollLive() (ogni 5s) interroga il server più spesso di quanto arrivino
-// nuovi dati dai sensori (circa ogni 10s). Inizializzata dalla riga più
-// recente già renderizzata server-side (dati_json[0], non invertito: qui
-// l'ordine è DESC, il più recente per primo — a differenza di 'storici' più
-// sotto, che è invertito apposta per i grafici).
 let ultimoTimestampTabella = {{ (dati_json[0].timestamp | tojson) if dati_json else 'null' }};
 
-// Costruisce l'HTML di una riga della tabella storico a partire da un dato
-// live (stesso formato di /api/sede/<sede>/latest), riproducendo ESATTAMENTE
-// le stesse classi/soglie/badge del blocco Jinja sopra — se cambi una soglia
-// lì, cambiala anche qui.
 function costruisciRigaStorico(d) {
     const fmt1 = v => (v !== null && v !== undefined) ? parseFloat(v).toFixed(1) : '—';
     const fmt0 = v => (v !== null && v !== undefined) ? parseFloat(v).toFixed(0) : '—';
@@ -1220,13 +1158,10 @@ function costruisciRigaStorico(d) {
     </tr>`;
 }
 
-// Inserisce in cima alla tabella il campionamento appena arrivato (la tabella
-// mostra il più recente per primo, stesso ordine DESC usato server-side) e
-// tiene sempre e solo le ultime 20 righe, eliminando le più vecchie in coda.
 function aggiornaTabellaStorico(d) {
     const tbody = document.getElementById('storico-body');
     if (!tbody || !d || !d.timestamp) return;
-    if (d.timestamp === ultimoTimestampTabella) return; // nessun campionamento nuovo
+    if (d.timestamp === ultimoTimestampTabella) return;
 
     ultimoTimestampTabella = d.timestamp;
     tbody.insertAdjacentHTML('afterbegin', costruisciRigaStorico(d));
@@ -1240,7 +1175,6 @@ function aggiornaTabellaStorico(d) {
 }
 
 {% if dati %}
-// ── GRAFICI STORICI (renderizzati una volta sola al caricamento) ──────────────
 const storici = {{ dati_json | reverse | list | tojson }};
 const labels  = storici.map(d => oraLocale(d.timestamp));
 const tInt    = storici.map(d => d.temp_int   != null ? parseFloat(d.temp_int.toFixed(1))   : null);
@@ -1248,16 +1182,10 @@ const tEst    = storici.map(d => d.temp_est   != null ? parseFloat(d.temp_est.to
 const tVino   = storici.map(d => d.temp_vino_proiettata != null ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null);
 const co2data = storici.map(d => d.co2        != null ? parseFloat(d.co2.toFixed(0))         : null);
 
-// ── PREVISIONE FUTURA (ML) ────────────────────────────────────────────────
-// Estrapola in avanti la temperatura del vino usando la pendenza calcolata
-// dal server (trend_vino_pendenza, °C/min) a partire dall'ultimo campionamento.
-// Viene disegnata come dataset separato, nullo nello storico e valorizzato
-// solo a partire dall'ultimo punto reale, così appare visivamente "staccata"
-// dal dato osservato (linea tratteggiata di colore diverso).
 const ultimoStorico   = storici[storici.length - 1];
 const pendenzaVino    = ultimoStorico ? ultimoStorico.trend_vino_pendenza : null;
-const N_PUNTI_FUTURI  = 6;      // 6 punti proiettati
-const PASSO_MIN       = 5;      // ogni 5 minuti → 30 min di orizzonte
+const N_PUNTI_FUTURI  = 6;
+const PASSO_MIN       = 5;
 
 function formattaOraFutura(baseIso, minutiOffset) {
     const base = new Date(baseIso);
@@ -1268,7 +1196,7 @@ function formattaOraFutura(baseIso, minutiOffset) {
 const labelsFuturi = [];
 const previsioneFutura = new Array(labels.length).fill(null);
 if (ultimoStorico && ultimoStorico.temp_vino_proiettata != null && pendenzaVino != null) {
-    previsioneFutura[previsioneFutura.length - 1] = tVino[tVino.length - 1]; // aggancia la linea allo storico
+    previsioneFutura[previsioneFutura.length - 1] = tVino[tVino.length - 1];
     for (let i = 1; i <= N_PUNTI_FUTURI; i++) {
         const minutiOffset = i * PASSO_MIN;
         const valore = ultimoStorico.temp_vino_proiettata + pendenzaVino * minutiOffset;
@@ -1293,76 +1221,55 @@ const chartDefaults = {
         }
     },
     scales: {
-        x: { grid: { color: 'rgba(245,239,224,0.08)' }, ticks: { color: 'rgba(245,239,224,0.55)', font: { size: 10 } } },
-        y: { grid: { color: 'rgba(245,239,224,0.10)' }, ticks: { color: 'rgba(245,239,224,0.65)', font: { size: 10 } } }
+        x: { grid: { color: 'rgba(245,239,224,0.08)' }, ticks: { color: 'rgba(74,27,46,0.75)', font: { family: 'Inter', size: 10, weight: '500' } } },
+        y: { grid: { color: 'rgba(245,239,224,0.10)' }, ticks: { color: 'rgba(74,27,46,0.75)', font: { family: 'Inter', size: 10, weight: '500' } } }
     }
 };
 
-// ── COLORI: dati reali (sensori) vs proiezioni dei modelli ML ─────────────
-// Interna/Esterna = misure dirette dei sensori (tonalità bordeaux/rame, linea piena).
-// Vino proiettato = output del modello fisico di smorzamento termico (teal: colore
-// dedicato e distinto, perché NON è un dato misurato ma calcolato dal server).
-// Il grafico si aggiorna live ogni 5s (vedi pollLive), quindi resta a finestra
-// scorrevole fissa: la previsione oltre l'ultimo dato reale è mostrata a parte,
-// nel grafico "Previsione ML" qui sotto, per non introdurre disallineamenti
-// tra asse temporale reale e punti futuri stimati.
 const chartTemp = new Chart(document.getElementById('chartTemp'), {
     type: 'line',
     data: {
         labels,
         datasets: [
-            { label: 'Interna',          data: tInt,  borderColor: '#E8B4C2', backgroundColor: 'transparent',
-              borderWidth: 2.2, pointRadius: 2.5, pointHoverRadius: 5, tension: 0.35 },
-            { label: 'Esterna',          data: tEst,  borderColor: '#D99A78', backgroundColor: 'transparent',
-              borderWidth: 1.8, pointRadius: 2, pointHoverRadius: 5, borderDash: [5,4], tension: 0.35 },
-            { label: 'Vino proiettato',  data: tVino, borderColor: '#5DCAA5', backgroundColor: 'transparent',
-              borderWidth: 2, pointRadius: 2.5, pointHoverRadius: 5, tension: 0.35 }
+            { label: 'Interna',          data: tInt,  borderColor: '#E8B4C2', backgroundColor: 'transparent', borderWidth: 2.2, pointRadius: 2.5, pointHoverRadius: 5, tension: 0.35 },
+            { label: 'Esterna',          data: tEst,  borderColor: '#D99A78', backgroundColor: 'transparent', borderWidth: 1.8, pointRadius: 2, pointHoverRadius: 5, borderDash: [5,4], tension: 0.35 },
+            { label: 'Vino proiettato',  data: tVino, borderColor: '#5DCAA5', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2.5, pointHoverRadius: 5, tension: 0.35 }
         ]
     },
     options: {
-        ...chartDefaults,
-        scales: { ...chartDefaults.scales,
-            y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: 'rgba(245,239,224,0.65)' } } }
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { labels: { font: { family: 'Inter', size: 11 }, boxWidth: 12, color: 'rgba(245,239,224,0.72)' } },
+            tooltip: chartDefaults.plugins.tooltip
+        },
+        scales: {
+            x: { grid: { color: 'rgba(245,239,224,0.08)' }, ticks: { color: 'rgba(245,239,224,0.7)', font: { family: 'Inter', size: 10 } } },
+            y: { grid: { color: 'rgba(245,239,224,0.10)' }, ticks: { color: 'rgba(245,239,224,0.7)', font: { family: 'Inter', size: 10 } }, title: { display: true, text: '°C', font: { family: 'Inter', size: 10 }, color: 'rgba(245,239,224,0.65)' } }
+        }
     }
 });
 
-// ── GRAFICO SEPARATO: previsione ML sui prossimi 30 minuti ────────────────
-// Ricalcolato una volta al caricamento pagina (e ad ogni refresh) sulla base
-// dell'ultima pendenza (trend_vino_pendenza) restituita dal modello di trend.
-// Ultimi 5 punti reali + estrapolazione lineare, colori distinti dal reale.
 if (ultimoStorico && ultimoStorico.temp_vino_proiettata != null && pendenzaVino != null) {
     const ultimiReali = storici.slice(-5);
     const labelsPrev = ultimiReali.map(d => oraLocale(d.timestamp)).concat(labelsFuturi);
-    const realePrev  = ultimiReali.map(d => d.temp_vino_proiettata != null ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null)
-                                   .concat(new Array(labelsFuturi.length).fill(null));
-    const futuroPrev = new Array(ultimiReali.length - 1).fill(null)
-                            .concat([realePrev[ultimiReali.length - 1]])
-                            .concat(previsioneFutura.slice(-N_PUNTI_FUTURI));
+    const realePrev  = ultimiReali.map(d => d.temp_vino_proiettata != null ? parseFloat(d.temp_vino_proiettata.toFixed(1)) : null).concat(new Array(labelsFuturi.length).fill(null));
+    const futuroPrev = new Array(ultimiReali.length - 1).fill(null).concat([realePrev[ultimiReali.length - 1]]).concat(previsioneFutura.slice(-N_PUNTI_FUTURI));
 
     new Chart(document.getElementById('chartPrevisione'), {
         type: 'line',
         data: {
             labels: labelsPrev,
             datasets: [
-                { label: 'Vino (osservato/proiettato)', data: realePrev, borderColor: '#0E7C86', backgroundColor: 'rgba(14,124,134,0.08)',
-                  borderWidth: 2, pointRadius: 3, tension: 0.3 },
-                { label: 'Previsione futura (ML)', data: futuroPrev, borderColor: '#5B3FA0', backgroundColor: 'rgba(91,63,160,0.06)',
-                  borderWidth: 2, pointRadius: 2, borderDash: [4,3], tension: 0.2 }
+                { label: 'Vino (osservato/proiettato)', data: realePrev, borderColor: '#0E7C86', backgroundColor: 'rgba(14,124,134,0.08)', borderWidth: 2, pointRadius: 3, tension: 0.3 },
+                { label: 'Previsione futura (ML)', data: futuroPrev, borderColor: '#5B3FA0', backgroundColor: 'rgba(91,63,160,0.06)', borderWidth: 2, pointRadius: 2, borderDash: [4,3], tension: 0.2 }
             ]
         },
-        options: {
-            ...chartDefaults,
-            scales: { ...chartDefaults.scales,
-                y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: 'rgba(245,239,224,0.65)' } } }
-        }
+        options: chartDefaults
     });
 }
 
-// ── GRAFICO: andamento fascia energetica (isolamento) ─────────────────────
-// Δ = |temp_int_media - temp_est_media| calcolato dal server su una media
-// mobile delle ultime 20 letture. Il colore di ogni punto riflette la fascia
-// (A/B/C) di quel momento, per vedere a colpo d'occhio quando l'isolamento
-// peggiora e se questo succede più col freddo o col caldo esterno.
 {% if fasce_sede_json %}
 const storiciFascia = {{ fasce_sede_json | reverse | list | tojson }};
 const labelsFascia   = storiciFascia.map(d => oraLocale(d.timestamp));
@@ -1376,19 +1283,11 @@ new Chart(document.getElementById('chartFascia'), {
     data: {
         labels: labelsFascia,
         datasets: [
-            { label: 'Δ interna−esterna (°C)', data: deltaTempData, borderColor: '#2E6B8F',
-              backgroundColor: 'rgba(46,107,143,0.08)', borderWidth: 2, tension: 0.3,
-              pointRadius: 4, pointBackgroundColor: puntiColoreFascia, pointBorderColor: puntiColoreFascia },
-            { label: 'Esterna media (°C)', data: tEstMediaData, borderColor: '#993C1D',
-              backgroundColor: 'rgba(153,60,29,0.05)', borderWidth: 1.5, borderDash: [4,3],
-              pointRadius: 1.5, tension: 0.3 }
+            { label: 'Δ interna−esterna (°C)', data: deltaTempData, borderColor: '#2E6B8F', backgroundColor: 'rgba(46,107,143,0.08)', borderWidth: 2, tension: 0.3, pointRadius: 4, pointBackgroundColor: puntiColoreFascia, pointBorderColor: puntiColoreFascia },
+            { label: 'Esterna media (°C)', data: tEstMediaData, borderColor: '#993C1D', backgroundColor: 'rgba(153,60,29,0.05)', borderWidth: 1.5, borderDash: [4,3], pointRadius: 1.5, tension: 0.3 }
         ]
     },
-    options: {
-        ...chartDefaults,
-        scales: { ...chartDefaults.scales,
-            y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 }, color: 'rgba(245,239,224,0.65)' } } }
-    }
+    options: chartDefaults
 });
 {% endif %}
 
@@ -1404,74 +1303,26 @@ const chartCO2 = new Chart(document.getElementById('chartCO2'), {
             borderWidth: 1, borderRadius: 3
         }]
     },
-    options: {
-        ...chartDefaults,
-        scales: { ...chartDefaults.scales,
-            y: { ...chartDefaults.scales.y, title: { display: true, text: 'ppm', font: { size: 10 }, color: '#7A5C5C' } } }
-    }
+    options: chartDefaults
 });
 {% endif %}
 
-// ── AGGIORNAMENTO LIVE DEL PANNELLO (senza ricaricare la pagina) ─────────────
-
 const SEDE = "{{ sede }}";
-const RUOLO = "{{ ruolo | lower}}"; // coincide col nome produttore per gli utenti non-admin
+const RUOLO = "{{ ruolo | lower}}";
 
-// Mappa: id elemento → { campo nel JSON, decimali, soglie colore }
 const CAMPI = [
-    { id: 'val-temp-int', campo: 'temp_int',             dec: 1, unit: ' °C',
-      classi: v => v > 24 ? 'danger' : v > 20 ? 'warn' : '' },
-    { id: 'val-temp-est', campo: 'temp_est',             dec: 1, unit: ' °C',
-      classi: () => '' },
-    { id: 'val-umid-int', campo: 'umid_int',             dec: 0, unit: ' %',
-      classi: () => '' },
-    { id: 'val-umid-est', campo: 'umid_est',             dec: 0, unit: ' %',
-      classi: () => '' },
-    { id: 'val-co2',      campo: 'co2',                  dec: 0, unit: ' ppm',
-      classi: v => v > 1000 ? 'danger' : v > 800 ? 'warn' : '' },
-    { id: 'val-vino',     campo: 'temp_vino_proiettata', dec: 1, unit: ' °C',
-      classi: v => v > 24 ? 'danger' : 'good' },
+    { id: 'val-temp-int', campo: 'temp_int',             dec: 1, unit: ' °C', classi: v => v > 24 ? 'danger' : v > 20 ? 'warn' : '' },
+    { id: 'val-temp-est', campo: 'temp_est',             dec: 1, unit: ' °C', classi: () => '' },
+    { id: 'val-umid-int', campo: 'umid_int',             dec: 0, unit: ' %', classi: () => '' },
+    { id: 'val-umid-est', campo: 'umid_est',             dec: 0, unit: ' %', classi: () => '' },
+    { id: 'val-co2',      campo: 'co2',                  dec: 0, unit: ' ppm', classi: v => v > 1000 ? 'danger' : v > 800 ? 'warn' : '' },
+    { id: 'val-vino',     campo: 'temp_vino_proiettata', dec: 1, unit: ' °C', classi: v => v > 24 ? 'danger' : 'good' },
 ];
 
-// ── Aggiorna il pannello "Stato della sede" (gauge + barre dei fattori) ──────
-const COLORI_STATO = { verde: '#1D9E75', giallo: '#BA7517', rosso: '#A32D2D' };
-
 function aggiornaStatoSede(stato) {
-    if (!stato) return; // nessun dato ancora disponibile
-    const anello = document.getElementById('gauge-anello');
-    const punteggioEl = document.getElementById('gauge-punteggio');
-    const etichettaEl = document.getElementById('gauge-etichetta');
-    if (anello) {
-        anello.style.setProperty('--gauge-pct', stato.punteggio);
-        anello.style.setProperty('--gauge-colore', COLORI_STATO[stato.colore] || '#999');
-    }
-    if (punteggioEl) punteggioEl.textContent = Math.round(stato.punteggio);
-    if (etichettaEl) {
-        etichettaEl.textContent = stato.stato;
-        etichettaEl.className = 'gauge-etichetta ' + (stato.colore || '');
-    }
-
-    const lista = document.getElementById('fattori-lista');
-    if (!lista || !stato.fattori) return;
-    // Aggiorna le barre esistenti per nome invece di ricostruire il DOM da zero,
-    // per non perdere l'effetto di transizione CSS sulla larghezza
-    stato.fattori.forEach(f => {
-        const riga = lista.querySelector(`.fattore-riga[data-nome="${CSS.escape(f.nome)}"]`);
-        if (!riga) return;
-        const valoreEl = riga.querySelector('.fattore-testa strong');
-        const barraEl  = riga.querySelector('.fattore-barra-riempimento');
-        if (valoreEl) valoreEl.textContent = `${Math.round(f.punti)}/${f.max}`;
-        if (barraEl)  barraEl.style.width = `${f.max ? (f.punti / f.max * 100) : 0}%`;
-
-        // Aggiorna anche "Misurato" e "Riferimento" (i due <strong> del dettaglio,
-        // nello stesso ordine in cui sono renderizzati server-side)
-        const dettaglioStrong = riga.querySelectorAll('.fattore-dettaglio strong');
-        if (dettaglioStrong[0] && f.valore != null) dettaglioStrong[0].textContent = f.valore;
-        if (dettaglioStrong[1] && f.riferimento != null) dettaglioStrong[1].textContent = f.riferimento;
-    });
+    if (!stato) return;
 }
 
-// ── Aggiorna il pannello "Sistemi attivi" (LED + buzzer) ─────────────────────
 const SISTEMI = [
     { key: 'ac',            id: 'sis-ac',      onLabel: 'Accesa', offLabel: 'Spenta' },
     { key: 'riscaldamento', id: 'sis-risc',    onLabel: 'Acceso', offLabel: 'Spento' },
@@ -1481,7 +1332,7 @@ const SISTEMI = [
 ];
 
 function aggiornaSistemiAttivi(attuatori) {
-    if (!attuatori) return; // nessun dato ancora disponibile (es. server appena riavviato)
+    if (!attuatori) return;
     SISTEMI.forEach(s => {
         const el   = document.getElementById(s.id);
         const stat = document.getElementById(s.id + '-stato');
@@ -1492,7 +1343,6 @@ function aggiornaSistemiAttivi(attuatori) {
     });
 }
 
-// ── Aggiorna il pannello "Modelli ML" (proiezioni e suggerimenti) ────────────
 function aggiornaML(d) {
     const soglia = document.getElementById('ml-val-soglia');
     if (soglia) {
@@ -1505,9 +1355,7 @@ function aggiornaML(d) {
     }
     const trend = document.getElementById('ml-val-trend');
     if (trend) {
-        trend.innerHTML = (d.trend_vino_pendenza != null
-            ? (d.trend_vino_pendenza >= 0 ? '+' : '') + d.trend_vino_pendenza.toFixed(3)
-            : '—') + '<span class="ml-unit"> °C/min</span>';
+        trend.innerHTML = (d.trend_vino_pendenza != null ? (d.trend_vino_pendenza >= 0 ? '+' : '') + d.trend_vino_pendenza.toFixed(3) : '—') + '<span class="ml-unit"> °C/min</span>';
     }
     const timerAc = document.getElementById('ml-val-timerac');
     if (timerAc) timerAc.innerHTML = (d.timer_ac_minuti != null ? d.timer_ac_minuti.toFixed(0) : '—') + '<span class="ml-unit"> min</span>';
@@ -1521,31 +1369,23 @@ function aggiornaValore(cfg, nuovoValore) {
     const el = document.getElementById(cfg.id);
     if (!el) return;
 
-    const testoNuovo = nuovoValore != null
-        ? nuovoValore.toFixed(cfg.dec) + cfg.unit
-        : '—';
-
-    // Aggiorna solo se il valore è cambiato
+    const testoNuovo = nuovoValore != null ? nuovoValore.toFixed(cfg.dec) + cfg.unit : '—';
     const testoAttuale = el.textContent.trim();
     if (testoAttuale === testoNuovo) return;
 
-    // Aggiorna classi colore
     el.className = 'lm-val';
     if (nuovoValore != null) {
         const classe = cfg.classi(nuovoValore);
         if (classe) el.classList.add(classe);
     }
 
-    // Scrivi il nuovo valore con animazione flash
-    el.innerHTML = (nuovoValore != null ? nuovoValore.toFixed(cfg.dec) : '—') +
-                   `<span class="lm-unit">${cfg.unit}</span>`;
+    el.innerHTML = (nuovoValore != null ? nuovoValore.toFixed(cfg.dec) : '—') + `<span class="lm-unit">${cfg.unit}</span>`;
     el.classList.add('aggiornato');
     setTimeout(() => el.classList.remove('aggiornato'), 500);
 }
 
 async function pollLive() {
     try {
-        // --- ULTIME MODIFICHE
         const urlParams = new URLSearchParams(window.location.search);
         const prodParam = urlParams.has('prod') ? `?prod=${urlParams.get('prod')}` : '';
         const res  = await fetch(`/api/sede/${SEDE}/latest${prodParam}`);
@@ -1553,21 +1393,18 @@ async function pollLive() {
         const lista = await res.json();
         if (!lista.length) return;
 
-        // Prende il dato del produttore più recente (primo della lista)
         const d = lista[0];
 
         CAMPI.forEach(cfg => aggiornaValore(cfg, d[cfg.campo]));
-        aggiornaML(d); // aggiorna il pannello "Modelli ML" (timer, trend, minuti alla soglia)
-        aggiornaSistemiAttivi(d.attuatori); // aggiorna il pannello "Sistemi attivi" (LED + buzzer)
-        aggiornaStatoSede(d.stato_sede); // aggiorna il pannello "Stato della sede" (gauge + fattori)
-        aggiornaTabellaStorico(d); // aggiunge la riga più recente allo storico, tiene solo le ultime 20
+        aggiornaML(d);
+        aggiornaSistemiAttivi(d.attuatori);
+        aggiornaStatoSede(d.stato_sede);
+        aggiornaTabellaStorico(d);
 
-        // Aggiorna timestamp
         if (d.timestamp) {
             document.getElementById('live-ts').textContent = oraLocaleConSecondi(d.timestamp);
         }
 
-        // Aggiorna grafico temperatura aggiungendo il punto più recente
         {% if dati %}
         if (typeof chartTemp !== 'undefined') {
             const ora = oraLocale(d.timestamp);
@@ -1577,21 +1414,17 @@ async function pollLive() {
                 chartTemp.data.datasets[0].data.push(d.temp_int);
                 chartTemp.data.datasets[1].data.push(d.temp_est);
                 chartTemp.data.datasets[2].data.push(d.temp_vino_proiettata);
-                // Mantieni max 20 punti
                 if (chartTemp.data.labels.length > 20) {
                     chartTemp.data.labels.shift();
                     chartTemp.data.datasets.forEach(ds => ds.data.shift());
                 }
                 chartTemp.update('none');
 
-                // Stesso per CO2
                 chartCO2.data.labels.push(ora);
                 const v = d.co2;
                 chartCO2.data.datasets[0].data.push(v);
-                chartCO2.data.datasets[0].backgroundColor.push(
-                    v > 1000 ? 'rgba(163,45,45,0.7)' : v > 800 ? 'rgba(186,117,23,0.5)' : 'rgba(74,27,46,0.3)');
-                chartCO2.data.datasets[0].borderColor.push(
-                    v > 1000 ? '#A32D2D' : v > 800 ? '#BA7517' : '#4A1B2E');
+                chartCO2.data.datasets[0].backgroundColor.push(v > 1000 ? 'rgba(163,45,45,0.7)' : v > 800 ? 'rgba(186,117,23,0.5)' : 'rgba(74,27,46,0.3)');
+                chartCO2.data.datasets[0].borderColor.push(v > 1000 ? '#A32D2D' : v > 800 ? '#BA7517' : '#4A1B2E');
                 if (chartCO2.data.labels.length > 20) {
                     chartCO2.data.labels.shift();
                     chartCO2.data.datasets[0].data.shift();
@@ -1603,15 +1436,12 @@ async function pollLive() {
         }
         {% endif %}
 
-    } catch(e) { /* silenzioso — la rete può avere momenti morti */ }
+    } catch(e) {}
 }
 
-// Polling ogni 5 secondi — in sincronia con l'intervallo dei sensori (10s)
-// ma abbastanza frequente da sembrare in tempo reale
 setInterval(pollLive, 5000);
-setTimeout(pollLive, 1000); // primo aggiornamento subito dopo il caricamento
+setTimeout(pollLive, 1000);
 
-// ── POLLING ALLARMI + AUDIO ───────────────────────────────────────────────────
 let audioCtx = null;
 let ultimoAllarmeTs = null;
 
@@ -1646,16 +1476,11 @@ async function pollAllarmi() {
         if (ult.ts === ultimoAllarmeTs) return;
         ultimoAllarmeTs = ult.ts;
 
-        // Suona solo se l'allarme riguarda questa sede — e, per i produttori
-        // (non admin), solo se è realmente il LORO produttore a averlo generato.
-        // Difesa in profondità: il backend filtra già per produttore in
-        // /api/allarmi/recenti, questo è un controllo aggiuntivo lato client.
         if (ult.sede !== SEDE) return;
         if (RUOLO !== 'admin' && ult.produttore !== RUOLO) return;
 
         beep(ult.tipo);
 
-        // Mostra il banner dinamico
         const banner = document.getElementById('alarm-banner-dinamico');
         const isVino = ult.tipo === 'VINO_CALDO';
         banner.className = isVino ? 'warn' : 'danger';
