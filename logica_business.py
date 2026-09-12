@@ -88,7 +88,7 @@ def prepara_dati_per_modelli(dati_grezzi_db,secondi_tra_letture=10):
             dati_sensori_zone[sede] = {}
         
         # Salviamo l'ultima lettura per quel produttore in quella sede
-        dati_sensori_zone[sede][produttore] = {"temp": temp_int, "umid": umid_int}
+        dati_sensori_zone[sede][produttore] = {"temp": temp_est, "umid": umid_est}
 
 
         # --- Popoliamo il dizionario per la conformità sedi ---
