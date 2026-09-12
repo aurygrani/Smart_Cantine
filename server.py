@@ -441,6 +441,26 @@ class FasciaEfficienza(db.Model):
     delta_temp      = db.Column(db.Float)        # differenza int-est
 
 
+class StoricoPunteggioSede(db.Model):
+    """
+    Storico del punteggio di calcola_stato_sede() (0-100, "Buona"/"Media"/
+    "Cattiva"). A differenza di FasciaEfficienza (un solo modello ML), qui
+    salviamo il punteggio COMPLESSIVO — la somma pesata di tutti e 5 i
+    fattori (temperatura, umidità, CO2, trend vino ML, efficienza ML) — così
+    da poterne disegnare l'andamento nel tempo in dashboard, con lo stesso
+    colore che il pannello "Stato della sede" mostra in quel momento.
+    Salvata con la stessa cadenza di FasciaEfficienza (una riga per ogni
+    ciclo di calcolo di _stato_sede, vedi on_message).
+    """
+    id         = db.Column(db.Integer, primary_key=True)
+    timestamp  = db.Column(db.DateTime, default=datetime.utcnow)
+    produttore = db.Column(db.String(50))
+    sede       = db.Column(db.String(50))
+    punteggio  = db.Column(db.Float)        # 0-100
+    stato      = db.Column(db.String(10))   # 'Buona' | 'Media' | 'Cattiva'
+    colore     = db.Column(db.String(10))   # 'verde' | 'giallo' | 'rosso'
+
+
 class ConfigurazioneSede(db.Model):
     """
     Parametri fisici fissi per ogni sede — inseriti una volta dall'operatore.
@@ -1217,6 +1237,12 @@ def on_message(client, userdata, msg):
                         trend.get('minuti_alla_soglia'), trend.get('pendenza'),
                         cfg=cfg, fascia_efficienza=fascia_ml
                     )
+                    db.session.add(StoricoPunteggioSede(
+                        produttore=produttore, sede=sede,
+                        punteggio=_stato_sede[chiave_sede]['punteggio'],
+                        stato=_stato_sede[chiave_sede]['stato'],
+                        colore=_stato_sede[chiave_sede]['colore'],
+                    ))
 
                     if _MODULI_ML_DISPONIBILI:
                         profilo_timer = recupera_profilo_produttore(produttore) or {}
@@ -1661,13 +1687,28 @@ def vista_sede(nome_sede):
         'temp_int_media': float(f.temp_int_media) if f.temp_int_media is not None else None,
     } for f in fasce_sede]
 
+    # Storico del punteggio "Stato della sede" (0-100 + colore), per il
+    # grafico "Andamento del punteggio di classificazione" — stesso pattern
+    # di fasce_sede_json sopra, ma dalla tabella StoricoPunteggioSede.
+    storico_punteggio_sede = (StoricoPunteggioSede.query
+                              .filter(StoricoPunteggioSede.sede == nome_sede,
+                                      StoricoPunteggioSede.produttore.in_(autorizzati))
+                              .order_by(StoricoPunteggioSede.timestamp.desc()).limit(30).all())
+    storico_punteggio_json = [{
+        'timestamp': iso_utc(p.timestamp),
+        'punteggio': float(p.punteggio) if p.punteggio is not None else None,
+        'stato':     p.stato,
+        'colore':    p.colore,
+    } for p in storico_punteggio_sede]
+
     return render_template('index.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
                            produttori_visibili=autorizzati, dati=dati_sede,
                            dati_json=dati_sede_json, sede=nome_sede,
                            attuatori=attuatori_iniziali,
                            stato_sede=stato_sede_iniziale,
-                           fasce_sede_json=fasce_sede_json)
+                           fasce_sede_json=fasce_sede_json,
+                           storico_punteggio_json=storico_punteggio_json)
 
 
 def evento_m2m_visibile(e, autorizzati):
