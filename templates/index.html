@@ -1044,6 +1044,32 @@
     </div>
     {% endif %}
 
+    {% if storico_isolamento_json %}
+    <div class="chart-card" style="margin-bottom:1.5rem;">
+        <p class="chart-title">Isolamento termico — Thermal Response Ratio (TRR)</p>
+        <p class="grafico-spiegazione">
+            TRR = |ΔT interna| / |ΔT esterna| su una finestra scorrevole di {{ FINESTRA_TRR_MINUTI }} minuti:
+            quanta della variazione di temperatura esterna in quella finestra si "trasferisce" all'interno.
+            Più è vicino a 0, meglio la cantina è isolata dall'esterno; più si avvicina o supera 1, più
+            l'interno segue l'esterno. Non è una vera trasmittanza U (servirebbe misurare il flusso
+            termico, ISO 9869-1), è un indicatore ricavato dai due soli termometri che abbiamo.
+            I punti mancanti sono momenti in cui la variazione esterna nella finestra era troppo piccola
+            per essere un segnale affidabile.
+            {% if storico_isolamento_json[0].finestra_minuti is not none %}
+            Finestra reale dell'ultima misura: {{ "%.0f"|format(storico_isolamento_json[0].finestra_minuti) }} min.
+            {% endif %}
+        </p>
+        <div class="chart-legend">
+            <span class="lg-item" style="color:#1D9E75"><span class="lg-swatch" style="background:#1D9E75"></span>Isolamento buono (TRR &lt; 0.2)</span>
+            <span class="lg-item" style="color:#BA7517"><span class="lg-swatch" style="background:#BA7517"></span>Medio (0.2-0.5)</span>
+            <span class="lg-item" style="color:#A32D2D"><span class="lg-swatch" style="background:#A32D2D"></span>Scarso (&gt; 0.5)</span>
+        </div>
+        <div class="chart-wrap" style="height:160px;">
+            <canvas id="chartIsolamento"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Tabella storico -->
     <div class="history-card">
         <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
@@ -1288,6 +1314,50 @@ new Chart(document.getElementById('chartPunteggio'), {
         ]
     },
     options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...(chartDefaults.scales && chartDefaults.scales.y), min: 0, max: 100 } } }
+});
+{% endif %}
+
+{% if storico_isolamento_json %}
+const storicoIsolamento   = {{ storico_isolamento_json | reverse | list | tojson }};
+const labelsIsolamento    = storicoIsolamento.map(d => oraLocale(d.timestamp));
+const trrData             = storicoIsolamento.map(d => d.trr);
+const deltaTextIsolamento = storicoIsolamento.map(d => d.delta_text);
+const deltaTintIsolamento = storicoIsolamento.map(d => d.delta_tint);
+
+function coloreTRR(v) {
+    if (v == null) return 'rgba(153,153,153,0.4)';
+    if (v < 0.2) return '#1D9E75';
+    if (v < 0.5) return '#BA7517';
+    return '#A32D2D';
+}
+const puntiColoreTRR = trrData.map(coloreTRR);
+
+new Chart(document.getElementById('chartIsolamento'), {
+    type: 'line',
+    data: {
+        labels: labelsIsolamento,
+        datasets: [
+            { label: 'TRR (|ΔT interna| / |ΔT esterna|)', data: trrData, borderColor: '#4A1B2E', backgroundColor: 'rgba(74,27,46,0.06)', borderWidth: 2, tension: 0.3, pointRadius: 4, pointBackgroundColor: puntiColoreTRR, pointBorderColor: puntiColoreTRR, spanGaps: true }
+        ]
+    },
+    options: {
+        ...chartDefaults,
+        plugins: {
+            ...chartDefaults.plugins,
+            tooltip: {
+                ...chartDefaults.plugins.tooltip,
+                callbacks: {
+                    afterLabel: (ctx) => {
+                        const dt = deltaTextIsolamento[ctx.dataIndex];
+                        const di = deltaTintIsolamento[ctx.dataIndex];
+                        if (dt == null) return 'Variazione esterna nella finestra troppo piccola per stimare il TRR in questo momento';
+                        return `ΔT esterna: ${dt > 0 ? '+' : ''}${dt.toFixed(1)}°C  ·  ΔT interna: ${di > 0 ? '+' : ''}${di.toFixed(1)}°C`;
+                    }
+                }
+            }
+        },
+        scales: { ...chartDefaults.scales, y: { ...(chartDefaults.scales && chartDefaults.scales.y), min: 0 } }
+    }
 });
 {% endif %}
 

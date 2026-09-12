@@ -261,6 +261,56 @@ def calcola_stato_attuatori(temp_int, umid_int, co2, cfg=None):
     }
 
 
+# Finestra scorrevole per il Thermal Response Ratio, e soglia minima di
+# variazione esterna sotto la quale il rapporto non è affidabile (rumore di
+# misura, non un vero segnale di isolamento) — vedi calcola_trr().
+FINESTRA_TRR_MINUTI = 60
+SOGLIA_DELTA_TEXT_TRR = 1.0  # °C
+
+
+def calcola_trr(produttore, sede, temp_int_ora, temp_est_ora):
+    """
+    Calcola il Thermal Response Ratio (TRR) su una finestra scorrevole di
+    FINESTRA_TRR_MINUTI minuti, confrontando la lettura attuale con la
+    lettura più vicina a "FINESTRA_TRR_MINUTI minuti fa" già presente nello
+    storico di questa sede (non serve un campionamento a intervalli fissi:
+    prendiamo semplicemente la riga più recente che sia comunque più vecchia
+    della soglia, e la finestra reale usata viene restituita così com'è,
+    anche se più corta di quella richiesta).
+
+    Ritorna (delta_text, delta_tint, trr, finestra_minuti_reale), tutti None
+    se non c'è ancora abbastanza storico. trr è None anche quando la
+    variazione esterna nella finestra è troppo piccola (< SOGLIA_DELTA_TEXT_TRR):
+    sotto quella soglia il rapporto |ΔTint|/|ΔTest| diventa instabile e non
+    dice più niente sull'isolamento, amplifica solo il rumore di misura.
+    """
+    if temp_int_ora is None or temp_est_ora is None:
+        return None, None, None, None
+
+    soglia_tempo = datetime.utcnow() - timedelta(minutes=FINESTRA_TRR_MINUTI)
+    riferimento = (DatoSensore.query
+                   .filter(DatoSensore.produttore == produttore,
+                           DatoSensore.sede == sede,
+                           DatoSensore.timestamp <= soglia_tempo,
+                           DatoSensore.temp_int.isnot(None),
+                           DatoSensore.temp_est.isnot(None))
+                   .order_by(DatoSensore.timestamp.desc())
+                   .first())
+    if riferimento is None:
+        return None, None, None, None  # non c'è ancora abbastanza storico per questa sede
+
+    delta_text = temp_est_ora - riferimento.temp_est
+    delta_tint = temp_int_ora - riferimento.temp_int
+    finestra_reale = (datetime.utcnow() - riferimento.timestamp).total_seconds() / 60.0
+
+    if abs(delta_text) < SOGLIA_DELTA_TEXT_TRR:
+        trr = None
+    else:
+        trr = round(abs(delta_tint) / abs(delta_text), 3)
+
+    return round(delta_text, 2), round(delta_tint, 2), trr, round(finestra_reale, 1)
+
+
 def calcola_stato_sede(temp_int, umid_int, co2, minuti_alla_soglia, trend_pendenza,
                         cfg=None, fascia_efficienza=None):
     """
@@ -459,6 +509,35 @@ class StoricoPunteggioSede(db.Model):
     punteggio  = db.Column(db.Float)        # 0-100
     stato      = db.Column(db.String(10))   # 'Buona' | 'Media' | 'Cattiva'
     colore     = db.Column(db.String(10))   # 'verde' | 'giallo' | 'rosso'
+
+
+class StoricoIsolamento(db.Model):
+    """
+    Thermal Response Ratio (TRR) su finestra scorrevole: quanto della
+    variazione di temperatura ESTERNA nella finestra si "trasferisce"
+    all'interno nello stesso periodo.
+
+        TRR = |ΔT_int| / |ΔT_est|          (sulla finestra FINESTRA_TRR_MINUTI)
+
+    Più il TRR è vicino a 0, più la cantina è isolata dall'esterno (la
+    temperatura interna si muove molto meno di quella esterna); più si
+    avvicina o supera 1, più l'interno segue l'esterno (isolamento scarso).
+
+    NON è una vera trasmittanza U secondo ISO 9869-1 — per quella servirebbe
+    una misura diretta di flusso termico (heat flux plate), che non abbiamo.
+    È un indicatore osservabile dai due soli termometri che già abbiamo,
+    pensato per essere molto più informativo del semplice ΔT istantaneo
+    (che non distingue "cantina ben isolata" da "cantina in equilibrio con
+    fuori per puro caso").
+    """
+    id              = db.Column(db.Integer, primary_key=True)
+    timestamp       = db.Column(db.DateTime, default=datetime.utcnow)
+    produttore      = db.Column(db.String(50))
+    sede            = db.Column(db.String(50))
+    delta_text      = db.Column(db.Float)   # variazione T esterna nella finestra (°C)
+    delta_tint      = db.Column(db.Float)   # variazione T interna nella finestra (°C)
+    trr             = db.Column(db.Float)   # |delta_tint| / |delta_text| — None se non stimabile
+    finestra_minuti = db.Column(db.Float)   # durata reale della finestra usata
 
 
 class ConfigurazioneSede(db.Model):
@@ -1244,6 +1323,16 @@ def on_message(client, userdata, msg):
                         colore=_stato_sede[chiave_sede]['colore'],
                     ))
 
+                    # ── Isolamento termico (Thermal Response Ratio) ──────────────
+                    delta_text, delta_tint, trr, finestra_reale = calcola_trr(
+                        produttore, sede, temp_int, temp_est
+                    )
+                    db.session.add(StoricoIsolamento(
+                        produttore=produttore, sede=sede,
+                        delta_text=delta_text, delta_tint=delta_tint,
+                        trr=trr, finestra_minuti=finestra_reale,
+                    ))
+
                     if _MODULI_ML_DISPONIBILI:
                         profilo_timer = recupera_profilo_produttore(produttore) or {}
                         config_fisica = recupera_dati_sede(produttore, sede)
@@ -1701,6 +1790,20 @@ def vista_sede(nome_sede):
         'colore':    p.colore,
     } for p in storico_punteggio_sede]
 
+    # Storico del Thermal Response Ratio (isolamento termico) — stesso
+    # pattern delle altre due query sopra, dalla tabella StoricoIsolamento.
+    storico_isolamento = (StoricoIsolamento.query
+                          .filter(StoricoIsolamento.sede == nome_sede,
+                                  StoricoIsolamento.produttore.in_(autorizzati))
+                          .order_by(StoricoIsolamento.timestamp.desc()).limit(30).all())
+    storico_isolamento_json = [{
+        'timestamp':       iso_utc(i.timestamp),
+        'delta_text':      float(i.delta_text) if i.delta_text is not None else None,
+        'delta_tint':      float(i.delta_tint) if i.delta_tint is not None else None,
+        'trr':             float(i.trr) if i.trr is not None else None,
+        'finestra_minuti': float(i.finestra_minuti) if i.finestra_minuti is not None else None,
+    } for i in storico_isolamento]
+
     return render_template('index.html',
                            nome=current_user.username, ruolo=current_user.ruolo,
                            produttori_visibili=autorizzati, dati=dati_sede,
@@ -1708,7 +1811,9 @@ def vista_sede(nome_sede):
                            attuatori=attuatori_iniziali,
                            stato_sede=stato_sede_iniziale,
                            fasce_sede_json=fasce_sede_json,
-                           storico_punteggio_json=storico_punteggio_json)
+                           storico_punteggio_json=storico_punteggio_json,
+                           storico_isolamento_json=storico_isolamento_json,
+                           FINESTRA_TRR_MINUTI=FINESTRA_TRR_MINUTI)
 
 
 def evento_m2m_visibile(e, autorizzati):
