@@ -5,14 +5,14 @@
 // =======================
 // WIFI
 // =======================
-const char* ssid = "wi_fi";
+const char* ssid = "iPhone di Camilla";
 const char* password = "password";
 
 // =======================
 // MQTT
 // IMPORTANTE: usa lo stesso IP anche nell'ESP32 e nel server Python.
 // =======================
-const char* mqtt_server = "192.168.00.00";
+const char* mqtt_server = "172.20.10.2";
 const int mqtt_port = 1883;
 
 WiFiClient espClient;
